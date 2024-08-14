@@ -75,7 +75,7 @@ struct mca_part_persist_aggregated_request_t {
     size_t real_dt_size;                 /**< receiver needs to know how large the sender's datatype is. */
     size_t part_size; 
 
-    ompi_request_t** persist_aggregated_reqs;            /**< requests for persist_aggregatedent sends/recvs */
+    ompi_request_t** persist_aggregated_reqs;            /**< requests for persistent sends/recvs */
     ompi_request_t* setup_req [2];                /**< Request structure for setup messages */
 
 

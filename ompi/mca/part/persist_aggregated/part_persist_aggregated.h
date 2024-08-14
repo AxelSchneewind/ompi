@@ -245,7 +245,7 @@ mca_part_persist_aggregated_progress(void)
                     dt_size = (dt_size_ > (size_t) INT_MAX) ? MPI_UNDEFINED : (int) dt_size_;
                     int32_t bytes = req->real_count * dt_size;
 
-                    /* Set up persist_aggregatedent sends */
+                    /* Set up persistent sends */
                     req->persist_aggregated_reqs = (ompi_request_t**) malloc(sizeof(ompi_request_t*)*(req->real_parts));
                     for(i = 0; i < req->real_parts; i++) {
                          void *buf = ((void*) (((char*)req->req_addr) + (bytes * i)));
@@ -268,7 +268,7 @@ mca_part_persist_aggregated_progress(void)
 
 
 
-		    /* Set up persist_aggregatedent sends */
+		    /* Set up persistent sends */
                     req->persist_aggregated_reqs = (ompi_request_t**) malloc(sizeof(ompi_request_t*)*(req->real_parts));
                     req->flags = (int*) calloc(req->real_parts,sizeof(int));
 
@@ -386,7 +386,7 @@ mca_part_persist_aggregated_precv_init(void *buf,
     req->req_bytes = parts * count * dt_size;
 
     /* Set ompi request initial values */
-    req->req_ompi.req_persist_aggregatedent = true;
+    req->req_ompi.req_persistent = true;
     req->req_part_complete = true;
     req->req_ompi.req_complete = REQUEST_COMPLETED;
     req->req_ompi.req_state = OMPI_REQUEST_INACTIVE;
@@ -472,7 +472,7 @@ mca_part_persist_aggregated_psend_init(const void* buf,
     }
 
     /* Initilaize completion variables */
-    sendreq->req_base.req_ompi.req_persist_aggregatedent = true;
+    sendreq->req_base.req_ompi.req_persistent = true;
     req->req_part_complete = true;
     req->req_ompi.req_complete = REQUEST_COMPLETED;
     req->req_ompi.req_state = OMPI_REQUEST_INACTIVE;

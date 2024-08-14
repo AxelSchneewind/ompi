@@ -29,7 +29,7 @@ mca_part_persist_aggregated_precv_request_construct(mca_part_persist_aggregated_
     recvreq->req_base.req_ompi.req_start = mca_part_persist_aggregated_start;
     recvreq->req_base.req_ompi.req_free = mca_part_persist_aggregated_free;
     recvreq->req_base.req_ompi.req_cancel = NULL; 
-    recvreq->req_base.req_ompi.req_persist_aggregatedent = true; 
+    recvreq->req_base.req_ompi.req_persistent = true; 
     OBJ_CONSTRUCT( &(recvreq->req_base.req_convertor), opal_convertor_t );
 }
 
