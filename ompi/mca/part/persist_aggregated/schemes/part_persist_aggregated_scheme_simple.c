@@ -11,34 +11,47 @@
 
 static void ring_buffer_init(struct ring_buffer* rb, size_t count, size_t dtype_size) {
     rb->capacity = (count + 1) * dtype_size;
-    rb->buffer = (char*)malloc(rb->capacity);
-    rb->begin = 0;
-    rb->end = 0;
+    rb->buffer = (char*) calloc(rb->capacity, sizeof(char));
+    rb->begin = ATOMIC_VAR_INIT(0);
+    rb->end = ATOMIC_VAR_INIT(0);
+    rb->end_internal = ATOMIC_VAR_INIT(0);
 }
+
 
 static void ring_buffer_push(struct ring_buffer* rb, void* data, size_t count) {
-    for (int i = 0; i < count; i++) {
-        rb->buffer[rb->end] = ((char*)data)[i];
-        rb->end = (++rb->end) % rb->capacity;
+    int offset = atomic_fetch_add(&rb->end_internal, count);        // advance internal write pointer
+    offset = offset % rb->capacity;
+
+    for (int i = 0; i < count; i++) {       // write data (TODO: make this atomic too?)
+        rb->buffer[(offset + i) % rb->capacity] = ((char*)data)[i];
     }
-}
 
-static void ring_buffer_clear(struct ring_buffer* rb) {
-    rb->end = rb->begin;
-}
-
-static int ring_buffer_empty(struct ring_buffer* rb) {
-    return rb->begin == rb->end;
+    atomic_fetch_add(&rb->end, count);      // now data is actually ready to be read
 }
 
 static void* ring_buffer_pull(struct ring_buffer* rb, size_t count) {
-    void* result = &rb->buffer[rb->begin];
-    rb->begin = (rb->begin + count) % rb->capacity;
-    return result;
+    int index = atomic_fetch_add(&rb->begin, count);
+    return &rb->buffer[index % rb->capacity];
+}
+
+static void ring_buffer_clear(struct ring_buffer* rb) {
+    // reset all indices
+    atomic_fetch_and(&rb->end_internal, 0);
+    atomic_fetch_and(&rb->end, 0);
+    atomic_fetch_and(&rb->begin, 0);
+}
+
+static int ring_buffer_empty(struct ring_buffer* rb) {
+    return atomic_fetch_add(&rb->begin, 0) == atomic_fetch_add(&rb->end, 0);
+}
+
+static int ring_buffer_elements(struct ring_buffer* rb) {
+    return (atomic_fetch_add(&rb->end, 0) - atomic_fetch_add(&rb->begin, 0) + rb->capacity) % rb->capacity;
 }
 
 static void ring_buffer_free(struct ring_buffer* rb) {
-    free(rb->buffer);
+    if (NULL != rb->buffer)
+        free(rb->buffer);
     rb->buffer = NULL;
 }
 
@@ -59,8 +72,15 @@ void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* s
     state->aggregation_count = state->public_partition_count / state->internal_partition_count;
     assert(state->aggregation_count > 0);
 
+    // initialize counters
     state->internal_parts_ready = (atomic_int*) calloc(state->internal_partition_count, sizeof(atomic_int));
+
+    // initialized locked ring buffer
     ring_buffer_init(&state->public_parts_ready, state->public_partition_count, sizeof(int));
+}
+
+int part_persist_aggregate_simple_elements(struct part_persist_aggregation_state* state) {
+    return ring_buffer_elements(&state->public_parts_ready);
 }
 
 void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state* state) {
@@ -69,6 +89,7 @@ void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state* 
             state->internal_parts_ready[i] = ATOMIC_VAR_INIT(0);
         }
     }
+    ring_buffer_clear(&state->public_parts_ready);
 }
 
 void part_persist_aggregate_simple_push(struct part_persist_aggregation_state* state, int partition) {
@@ -82,13 +103,15 @@ void part_persist_aggregate_simple_push(struct part_persist_aggregation_state* s
 }
 
 int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state* state) {
-    // 
-    if (ring_buffer_empty(&state->public_parts_ready))
+    if (ring_buffer_empty(&state->public_parts_ready)) {
         return -1;
+    }
 
     int* partition_ptr = (int*)ring_buffer_pull(&state->public_parts_ready, sizeof(int));
-    return *partition_ptr;
+
+    return *partition_ptr;   
 }
+    
 
 int part_persist_aggregate_simple_extract(struct part_persist_aggregation_state* state, int public_partition) {
     int internal_part = internal_partition(state, public_partition);
@@ -102,7 +125,8 @@ int part_persist_aggregate_simple_extract(struct part_persist_aggregation_state*
 }
 
 void part_persist_aggregate_simple_free(struct part_persist_aggregation_state* state) {
-    free(state->internal_parts_ready);
+    if (state->internal_parts_ready != NULL)
+        free(state->internal_parts_ready);
     state->internal_parts_ready = NULL;
     ring_buffer_free(&state->public_parts_ready);
 }
