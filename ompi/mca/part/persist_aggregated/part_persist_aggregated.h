@@ -251,6 +251,26 @@ mca_part_persist_aggregated_progress(void)
     OPAL_LIST_FOREACH(current, ompi_part_persist_aggregated.progress_list, mca_part_persist_aggregated_list_t) {
         mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *) current->item;
 
+
+        // on sender side: get internal partitions that can be sent/queued
+        if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) {
+            int flag_value;
+            if(true == req->initialized)
+            {
+                flag_value = 0;     /* Mark partition as ready for testing */
+            } else {
+                flag_value = -2;    /* Mark partition as queued */
+            }
+
+            int internal_part;
+            while(0 <= (internal_part = part_persist_aggregate_simple_pull(&req->aggregation_state))) {
+                if(true == req->initialized)
+                    err = req->persist_aggregated_reqs[internal_part]->req_start(1, (&(req->persist_aggregated_reqs[internal_part])));
+
+                req->flags[internal_part] = flag_value;
+            }
+        }
+
         /* Check to see if request is initilaized */
         if(false == req->initialized) {
             int done = 0; 
@@ -582,24 +602,9 @@ mca_part_persist_aggregated_pready(size_t min_part,
 
     mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(request);
 
-    int flag_value;
-    if(true == req->initialized)
-    {
-        err = req->persist_aggregated_reqs[min_part]->req_start(max_part-min_part+1, (&(req->persist_aggregated_reqs[min_part])));
-        flag_value = 0;     /* Mark partition as ready for testing */
-    } else {
-        flag_value = -2;    /* Mark partition as queued */
-    }
-
     // 
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
         part_persist_aggregate_simple_push(&req->aggregation_state, i);
-    }
-
-    // get internal partitions that can be sent
-    int internal_part;
-    while(0 <= (internal_part = part_persist_aggregate_simple_pull(&req->aggregation_state))) {
-        req->flags[internal_part] = flag_value;
     }
         
     return err;
