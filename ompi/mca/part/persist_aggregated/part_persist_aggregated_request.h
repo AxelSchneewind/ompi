@@ -24,6 +24,9 @@
 #include "ompi/mca/part/base/part_base_psendreq.h"
 #include "ompi/mca/part/part.h"
 #include "opal/sys/atomic.h"
+
+#include "ompi/mca/part/persist_aggregated/schemes/part_persist_aggregated_scheme_simple.h"
+
 /**
  * Type of request.
  */
@@ -98,6 +101,7 @@ struct mca_part_persist_aggregated_request_t {
   
     struct mca_part_persist_aggregated_list_t* progress_elem; /**< pointer to progress list element for removal during free. */ 
 
+    struct part_persist_aggregation_state aggregation_state;
 };
 typedef struct mca_part_persist_aggregated_request_t mca_part_persist_aggregated_request_t;
 OBJ_CLASS_DECLARATION(mca_part_persist_aggregated_request_t);
