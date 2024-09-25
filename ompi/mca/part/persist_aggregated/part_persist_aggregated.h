@@ -122,7 +122,8 @@ mca_part_persist_aggregated_free_req(struct mca_part_persist_aggregated_request_
     opal_list_remove_item(ompi_part_persist_aggregated.progress_list, (opal_list_item_t*)req->progress_elem);
     OBJ_RELEASE(req->progress_elem);
 
-    // frees aggregation state
+    // if on sender side, free aggregation state
+    if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type)
     part_persist_aggregate_simple_free(&req->aggregation_state);
 
     for(i = 0; i < req->real_parts; i++) {
@@ -534,7 +535,9 @@ mca_part_persist_aggregated_start(size_t count, ompi_request_t** requests)
         mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(requests[i]);
 
         // reset aggregation state here
-        part_persist_aggregate_simple_reset(&req->aggregation_state);
+        if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) {
+            part_persist_aggregate_simple_reset(&req->aggregation_state);
+        }
 
         /* First use is a special case, to support lazy initialization */
         if(false == req->first_send)
