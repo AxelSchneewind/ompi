@@ -5,11 +5,12 @@
 #include <stddef.h>
 
 
-// simple and unsafe ring buffer
+// simple and (possibly) unsafe ring buffer
 struct ring_buffer{
     size_t capacity;
-    size_t begin;
-    size_t end;
+    atomic_int begin;           // read index
+    atomic_int end;             // past-last index of available data
+    atomic_int end_internal;    // internal write index
     char* buffer;
 };
 
@@ -17,6 +18,7 @@ static void ring_buffer_init(struct ring_buffer* rb, size_t count, size_t dtype_
 static void ring_buffer_push(struct ring_buffer* rb, void* data, size_t count) ;
 static void ring_buffer_clear(struct ring_buffer* rb);
 static int  ring_buffer_empty(struct ring_buffer* rb);
+static int  ring_buffer_elements(struct ring_buffer* rb);
 
 static void* ring_buffer_pull(struct ring_buffer* rb, size_t count);
 
@@ -44,6 +46,8 @@ int first_public_partition(struct part_persist_aggregation_state* state, int int
 void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* state, int internal_partition_count, int public_partition_count);
 
 void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state* state);
+
+int part_persist_aggregate_simple_elements(struct part_persist_aggregation_state* state);
 
 void part_persist_aggregate_simple_push(struct part_persist_aggregation_state* state, int partition);
 
