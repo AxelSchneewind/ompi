@@ -45,6 +45,9 @@
 #include "ompi/mca/part/persist_aggregated/part_persist_aggregated_sendreq.h"
 #include "ompi/message/message.h"
 #include "ompi/mca/pml/pml.h"
+
+#include "ompi/mca/part/persist_aggregated/schemes/part_persist_aggregated_scheme_simple.h"
+
 BEGIN_C_DECLS
 
 typedef struct mca_part_persist_aggregated_list_t {
@@ -85,6 +88,29 @@ typedef struct ompi_part_persist_aggregated_t ompi_part_persist_aggregated_t;
 extern ompi_part_persist_aggregated_t ompi_part_persist_aggregated;
 
 
+// currently, uses hardcoded limit on partition sizes
+static void select_internal_partitioning(size_t partitions, size_t count, size_t* internal_partitions, size_t* internal_count) {
+    // select coarser partitioning if partition size (i.e. count) is too low
+    const int min_part_size = 16 * 1024;
+    if (count < min_part_size && 0 == count % min_part_size) {
+        *internal_count = min_part_size;
+        *internal_partitions = (min_part_size / count) * partitions;
+
+        assert(*internal_partitions >= partitions);
+        assert(*internal_count <= count);
+        assert((*internal_count) * (*internal_partitions) <= partitions * count);
+
+        if (!(*internal_partitions >= partitions
+        && *internal_count <= count
+        && (*internal_count) * (*internal_partitions) <= partitions * count))
+            printf("public and internal partitionings are inconsistent\n");
+    } else {
+        *internal_count = count;
+        *internal_partitions = partitions;
+    }
+}
+
+
 /**
  * This is a helper function that frees a request. This requires ompi_part_persist_aggregated.lock be held before calling.
  */
@@ -95,6 +121,9 @@ mca_part_persist_aggregated_free_req(struct mca_part_persist_aggregated_request_
     size_t i;
     opal_list_remove_item(ompi_part_persist_aggregated.progress_list, (opal_list_item_t*)req->progress_elem);
     OBJ_RELEASE(req->progress_elem);
+
+    // frees aggregation state
+    part_persist_aggregate_simple_free(&req->aggregation_state);
 
     for(i = 0; i < req->real_parts; i++) {
         ompi_request_free(&(req->persist_aggregated_reqs[i]));
@@ -448,14 +477,18 @@ mca_part_persist_aggregated_psend_init(const void* buf,
     /* non-blocking send set-up data */
     req->setup_info[0].world_rank = ompi_comm_rank(&ompi_mpi_comm_world.comm);
     req->setup_info[0].start_tag = ompi_part_persist_aggregated.next_send_tag; ompi_part_persist_aggregated.next_send_tag += parts; 
-    req->my_send_tag = req->setup_info[0].start_tag;
     req->setup_info[0].setup_tag = ompi_part_persist_aggregated.next_recv_tag; ompi_part_persist_aggregated.next_recv_tag++;
-    req->my_recv_tag = req->setup_info[0].setup_tag;
-    req->setup_info[0].num_parts = parts;
-    req->real_parts = parts;
-    req->setup_info[0].count = count;
-    req->real_count = count;
     req->setup_info[0].dt_size = dt_size;
+    req->my_send_tag = req->setup_info[0].start_tag;
+    req->my_recv_tag = req->setup_info[0].setup_tag;
+
+    // select internal partitioning (i.e. real_parts) here
+    select_internal_partitioning(parts, count, &req->real_parts, &req->real_count);
+    req->setup_info[0].num_parts = req->real_parts;         // setup info has to store internal partitioning
+    req->setup_info[0].count = req->real_count;
+
+    // init aggregation state
+    part_persist_aggregate_simple_init(&req->aggregation_state, req->real_parts, parts);
 
     req->flags = (int*) calloc(req->real_parts, sizeof(int));
 
@@ -471,7 +504,7 @@ mca_part_persist_aggregated_psend_init(const void* buf,
         req->flag_post_setup_recv = true;
     }
 
-    /* Initilaize completion variables */
+    /* Initialize completion variables */
     sendreq->req_base.req_ompi.req_persistent = true;
     req->req_part_complete = true;
     req->req_ompi.req_complete = REQUEST_COMPLETED;
@@ -499,6 +532,10 @@ mca_part_persist_aggregated_start(size_t count, ompi_request_t** requests)
 
     for(i = 0; i < _count && OMPI_SUCCESS == err; i++) {
         mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(requests[i]);
+
+        // reset aggregation state here
+        part_persist_aggregate_simple_reset(&req->aggregation_state);
+
         /* First use is a special case, to support lazy initialization */
         if(false == req->first_send)
         {
@@ -541,19 +578,27 @@ mca_part_persist_aggregated_pready(size_t min_part,
     size_t i;
 
     mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(request);
+
+    int flag_value;
     if(true == req->initialized)
     {
         err = req->persist_aggregated_reqs[min_part]->req_start(max_part-min_part+1, (&(req->persist_aggregated_reqs[min_part])));
-        for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-            req->flags[i] = 0; /* Mark partition as ready for testing */
-        }
+        flag_value = 0;     /* Mark partition as ready for testing */
+    } else {
+        flag_value = -2;    /* Mark partition as queued */
     }
-    else
-    {
-        for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-            req->flags[i] = -2; /* Mark partition as queued */
-        }
+
+    // 
+    for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
+        part_persist_aggregate_simple_push(&req->aggregation_state, i);
     }
+
+    // get internal partitions that can be sent
+    int internal_part;
+    while(0 <= (internal_part = part_persist_aggregate_simple_pull(&req->aggregation_state))) {
+        req->flags[internal_part] = flag_value;
+    }
+        
     return err;
 }
 
