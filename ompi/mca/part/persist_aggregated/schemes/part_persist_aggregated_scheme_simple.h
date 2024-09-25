@@ -53,5 +53,4 @@ void part_persist_aggregate_simple_push(struct part_persist_aggregation_state* s
 
 int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state* state);
 
-int part_persist_aggregate_simple_extract(struct part_persist_aggregation_state* state, int public_partition);
 void part_persist_aggregate_simple_free(struct part_persist_aggregation_state* state);

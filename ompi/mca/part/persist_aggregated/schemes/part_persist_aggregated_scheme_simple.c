@@ -112,18 +112,6 @@ int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state* st
     return *partition_ptr;   
 }
     
-
-int part_persist_aggregate_simple_extract(struct part_persist_aggregation_state* state, int public_partition) {
-    int internal_part = internal_partition(state, public_partition);
-    int count = atomic_fetch_add(&state->internal_parts_ready[internal_part], 0);
-    if (count == state->aggregation_count - 1) {
-        atomic_fetch_add(&state->internal_parts_ready[internal_part], 1);
-        return internal_part;
-    }
-
-    return -1;
-}
-
 void part_persist_aggregate_simple_free(struct part_persist_aggregation_state* state) {
     if (state->internal_parts_ready != NULL)
         free(state->internal_parts_ready);
