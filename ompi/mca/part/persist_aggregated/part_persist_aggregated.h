@@ -594,9 +594,12 @@ mca_part_persist_aggregated_pready(size_t min_part,
                     ompi_request_t* request)
 {
     int err = OMPI_SUCCESS;
-    size_t i;
 
+    size_t i;
     mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(request);
+
+    if (MCA_PART_persist_aggregated_REQUEST_PSEND != req->req_type)
+        err = OMPI_ERROR;
 
     // 
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
