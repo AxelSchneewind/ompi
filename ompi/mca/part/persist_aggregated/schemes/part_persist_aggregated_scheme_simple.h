@@ -4,7 +4,6 @@
 #include <stdatomic.h>
 #include <stddef.h>
 
-
 // simple and (possibly) unsafe ring buffer
 struct ring_buffer{
     size_t capacity;
@@ -13,18 +12,6 @@ struct ring_buffer{
     atomic_int end_internal;    // internal write index
     char* buffer;
 };
-
-static void ring_buffer_init(struct ring_buffer* rb, size_t count, size_t dtype_size);
-static void ring_buffer_push(struct ring_buffer* rb, void* data, size_t count) ;
-static void ring_buffer_clear(struct ring_buffer* rb);
-static int  ring_buffer_empty(struct ring_buffer* rb);
-static int  ring_buffer_elements(struct ring_buffer* rb);
-
-static void* ring_buffer_pull(struct ring_buffer* rb, size_t count);
-
-static void ring_buffer_free(struct ring_buffer* rb);
-
-
 
 struct part_persist_aggregation_state {
     // counters for each public partition
@@ -38,10 +25,6 @@ struct part_persist_aggregation_state {
     // buffer for public partitions ready to send
     struct ring_buffer public_parts_ready;
 };
-
-int internal_partition(struct part_persist_aggregation_state* state, int public_part);
-
-int first_public_partition(struct part_persist_aggregation_state* state, int internal_part);
 
 void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* state, int internal_partition_count, int public_partition_count);
 
