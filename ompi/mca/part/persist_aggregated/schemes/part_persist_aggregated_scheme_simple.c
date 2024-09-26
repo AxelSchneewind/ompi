@@ -57,11 +57,11 @@ static void ring_buffer_free(struct ring_buffer* rb) {
 
 
 
-int internal_partition(struct part_persist_aggregation_state* state, int public_part) {
+static int internal_partition(struct part_persist_aggregation_state* state, int public_part) {
     return public_part / state->aggregation_count;
 }
 
-int first_public_partition(struct part_persist_aggregation_state* state, int internal_part) {
+static int first_public_partition(struct part_persist_aggregation_state* state, int internal_part) {
     return internal_part * state->aggregation_count;
 }
 
@@ -75,7 +75,7 @@ void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* s
     // initialize counters
     state->internal_parts_ready = (atomic_int*) calloc(state->internal_partition_count, sizeof(atomic_int));
 
-    // initialized locked ring buffer
+    // initialize ring buffer
     ring_buffer_init(&state->public_parts_ready, state->public_partition_count, sizeof(int));
 }
 
