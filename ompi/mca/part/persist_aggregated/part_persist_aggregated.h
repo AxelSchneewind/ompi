@@ -88,22 +88,18 @@ typedef struct ompi_part_persist_aggregated_t ompi_part_persist_aggregated_t;
 extern ompi_part_persist_aggregated_t ompi_part_persist_aggregated;
 
 
-// currently, uses hardcoded limit on partition sizes
+// currently uses hardcoded limit on partition sizes
 static void select_internal_partitioning(size_t partitions, size_t count, size_t* internal_partitions, size_t* internal_count) {
     // select coarser partitioning if partition size (i.e. count) is too low
     const int min_part_size = 16 * 1024;
-    if (count < min_part_size && 0 == count % min_part_size) {
+    if (count < min_part_size && 0 == (count * partitions) % min_part_size) {
         *internal_count = min_part_size;
-        *internal_partitions = (min_part_size / count) * partitions;
+        *internal_partitions = (partitions * count) / *internal_count;
 
-        assert(*internal_partitions >= partitions);
-        assert(*internal_count <= count);
-        assert((*internal_count) * (*internal_partitions) <= partitions * count);
-
-        if (!(*internal_partitions >= partitions
-        && *internal_count <= count
-        && (*internal_count) * (*internal_partitions) <= partitions * count))
-            printf("public and internal partitionings are inconsistent\n");
+        if (!( *internal_partitions <= partitions
+                && *internal_count >= count
+                && ((*internal_count) * (*internal_partitions)) == partitions * count))
+            opal_output_verbose(10, ompi_part_base_framework.framework_output, "public and internal partitionings are inconsistent\n");
     } else {
         *internal_count = count;
         *internal_partitions = partitions;
