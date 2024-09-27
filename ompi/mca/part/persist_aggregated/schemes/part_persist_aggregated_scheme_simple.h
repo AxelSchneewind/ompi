@@ -1,21 +1,23 @@
 #pragma once // TODO switch to traditional header guards
 
 #include <stdlib.h>
-#include <stdatomic.h>
 #include <stddef.h>
+
+#include "opal/include/opal_stdatomic.h"
+#include "opal/class/opal_ring_buffer.h"
 
 // simple and (possibly) unsafe ring buffer
 struct ring_buffer{
     size_t capacity;
-    atomic_int begin;           // read index
-    atomic_int end;             // past-last index of available data
-    atomic_int end_internal;    // internal write index
+    opal_atomic_uint32_t begin;           // read index
+    opal_atomic_uint32_t end;             // past-last index of available data
+    opal_atomic_uint32_t end_internal;    // internal write index
     char* buffer;
 };
 
 struct part_persist_aggregation_state {
     // counters for each public partition
-    atomic_int* internal_parts_ready;
+    opal_atomic_uint32_t* internal_parts_ready;
 
     // parameters for message aggregation
     int aggregation_count;              // how many partitions may be aggregated
@@ -23,7 +25,7 @@ struct part_persist_aggregation_state {
     int public_partition_count;
 
     // buffer for public partitions ready to send
-    struct ring_buffer public_parts_ready;
+    opal_ring_buffer_t public_parts_ready;
 };
 
 void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* state, int internal_partition_count, int public_partition_count);
