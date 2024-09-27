@@ -12,10 +12,6 @@ static int internal_partition(struct part_persist_aggregation_state* state, int 
     return public_part / state->aggregation_count;
 }
 
-static int first_public_partition(struct part_persist_aggregation_state* state, int internal_part) {
-    return internal_part * state->aggregation_count;
-}
-
 void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* state, int internal_partition_count, int public_partition_count) {
     state->public_partition_count = public_partition_count;
     state->internal_partition_count = internal_partition_count;
