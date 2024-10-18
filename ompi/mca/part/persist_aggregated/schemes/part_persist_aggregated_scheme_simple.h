@@ -50,13 +50,13 @@ struct part_persist_aggregation_state {
 /**
  * @brief initializes the aggregation scheme
  *
- * @param[out] state                pointer to aggregation state object
- * @param internal_partition_count  number of internal partitions (i.e. number of messages per
+ * @param[out] state                    pointer to aggregation state object
+ * @param[in] internal_partition_count  number of internal partitions (i.e. number of messages per
  * partitioned transfer)
- * @param public_partition_count    number of public partitions (i.e. the partitioning used in
+ * @param[in] public_partition_count    number of public partitions (i.e. the partitioning used in
  * pready/parrived)
  */
-void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
+OMPI_DECLSPEC void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
                                         int internal_partition_count, int public_partition_count);
 
 /**
@@ -64,15 +64,15 @@ void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *s
  *
  * @param[out] state                pointer to aggregation state object
  */
-void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state);
+OMPI_DECLSPEC void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state);
 
 /**
  * @brief insert a public partition
  *
  * @param[in,out] state             pointer to aggregation state object
- * @param partition                 index of the public partition to insert
+ * @param[in] partition             index of the public partition to insert
  */
-void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state,
+OMPI_DECLSPEC void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state,
                                         int partition);
 
 /**
@@ -82,13 +82,13 @@ void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *s
  * @param[in,out] state             pointer to aggregation state object
  * @return                          the index of the public partition, -1 if none available
  */
-int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state *state);
+OMPI_DECLSPEC int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state *state);
 
 /**
  * @brief destroys the aggregation scheme
  *
  * @param[in,out] state             pointer to aggregation state object
  */
-void part_persist_aggregate_simple_free(struct part_persist_aggregation_state *state);
+OMPI_DECLSPEC void part_persist_aggregate_simple_free(struct part_persist_aggregation_state *state);
 
 #endif
