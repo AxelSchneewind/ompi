@@ -92,22 +92,51 @@ typedef struct ompi_part_persist_aggregated_t ompi_part_persist_aggregated_t;
 extern ompi_part_persist_aggregated_t ompi_part_persist_aggregated;
 
 
-// currently uses hardcoded limit on partition sizes
-static void select_internal_partitioning(size_t partitions, size_t count, size_t* internal_partitions, size_t* internal_count) {
-    // select coarser partitioning if partition size (i.e. count) is too low
-    const int min_part_size = 16 * 1024;
-    if (count < min_part_size && 0 == (count * partitions) % min_part_size) {
-        *internal_count = min_part_size;
-        *internal_partitions = (partitions * count) / *internal_count;
+/**
+ * @brief selects an internal partitioning based on the user-provided partitioning
+ * and the mca parameters for minimal partition size and maximal partition count.
+ * 
+ * More precisely, given a partitioning into p partitions of size c, computes
+ * an internal partitioning into p' partitions of size c' with remainder r such that
+ *      p * c = p' * c' + r * c
+ * and
+ *      c' < max_message_count
+ *      p' > min_message_size
+ * (given by mca parameters).
+ * 
+ * @param[in] partitions            number of user-provided partitions
+ * @param[in] count                 size of user-provided partitions
+ * @param[out] internal_partitions  number of internal partitions
+ * @param[out] internal_count       size of internal partitions
+ * @param[out] remainder            number of public partitions remaining after applying internal partititoning
+ */
+static void part_persist_aggregated_select_internal_partitioning(size_t partitions, size_t count, size_t* internal_partitions, size_t* internal_count, size_t* remainder) {
+    size_t buffer_size = partitions * count;
+    int min_part_size  = ompi_part_persist_aggregated.min_message_size;
+    int max_part_count = ompi_part_persist_aggregated.max_message_count;
 
-        if (!( *internal_partitions <= partitions
-                && *internal_count >= count
-                && ((*internal_count) * (*internal_partitions)) == partitions * count))
-            opal_output_verbose(10, ompi_part_base_framework.framework_output, "public and internal partitionings are inconsistent\n");
+    // check if max_part_count imposes lower limit on partition size
+    if ((buffer_size / max_part_count) < min_part_size) {
+        min_part_size = buffer_size / max_part_count;
+    }
+
+    if (count < min_part_size) {
+        *internal_count = min_part_size;
+        *internal_partitions = (partitions * count) / (*internal_count);
+        *remainder = partitions % (*internal_partitions);
     } else {
         *internal_count = count;
         *internal_partitions = partitions;
+        *remainder = 0;
     }
+
+    // check if anything went wrong
+    if (!( *internal_partitions <= partitions && *internal_count >= count
+          && ((*internal_count) * (*internal_partitions) + (*remainder * count)) == (partitions * count))) {
+        opal_output_verbose(10, ompi_part_base_framework.framework_output, "given [%lu:%lu] parititioning and internal partitioning of [%lu:%lu] + [%lu:%lu] are inconsistent\n", partitions, count, *internal_partitions, *internal_count, *remainder, count);
+    }
+
+    opal_output_verbose(10, ompi_part_base_framework.framework_output, "mapped given [%lu:%lu] parititioning to internal partitioning of [%lu:%lu] + [%lu:%lu]\n", partitions, count, *internal_partitions, *internal_count, *remainder, count);
 }
 
 
@@ -507,7 +536,8 @@ mca_part_persist_aggregated_psend_init(const void* buf,
     req->my_recv_tag = req->setup_info[0].setup_tag;
 
     // select internal partitioning (i.e. real_parts) here
-    select_internal_partitioning(parts, count, &req->real_parts, &req->real_count);
+    size_t remainder;
+    part_persist_aggregated_select_internal_partitioning(parts, count, &req->real_parts, &req->real_count, &remainder);
     req->setup_info[0].num_parts = req->real_parts;         // setup info has to store internal partitioning
     req->setup_info[0].count = req->real_count;
 
