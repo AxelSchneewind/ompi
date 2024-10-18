@@ -93,7 +93,7 @@ mca_part_persist_aggregated_component_register(void)
                                            MCA_BASE_VAR_SCOPE_READONLY,
                                            &ompi_part_persist_aggregated.min_message_size);
 
-    // variable for maximal internal partition size
+    // variable for maximal internal partition count
     ompi_part_persist_aggregated.max_message_count = 4096;
     (void) mca_base_component_var_register(&mca_part_persist_aggregated_component.partm_version, "max_message_count",
                                            "Maximal number of transferred messages (internal partitions)",
