@@ -1,26 +1,42 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
+/*
+ * Copyright (c) 2024      High Performance Computing Center Stuttgart,
+ *                         University of Stuttgart.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
+/**
+ * @file
+ * This file defines a simple message aggregation scheme:
+ * A user-provided partitioning of n partitions of size b can be mapped
+ * to an internal partitioning of n/k partitions of size k*b, where k can be selected
+ * to optimize internal partition size.
+ *
+ * This scheme can be used via a queue-like interface, where user-partitions can be pushed
+ * and internal partitions can be pulled as soon as all corresponding user-partitions have been
+ * inserted.
+ */
+
 #pragma once // TODO switch to traditional header guards
 
-#include <stdlib.h>
-#include <stddef.h>
-
-#include "opal/include/opal_stdatomic.h"
 #include "opal/class/opal_ring_buffer.h"
+#include "opal/include/opal_stdatomic.h"
 
-// simple and (possibly) unsafe ring buffer
-struct ring_buffer{
-    size_t capacity;
-    opal_atomic_uint32_t begin;           // read index
-    opal_atomic_uint32_t end;             // past-last index of available data
-    opal_atomic_uint32_t end_internal;    // internal write index
-    char* buffer;
-};
-
+/**
+ * @brief tracks already inserted public partitions and available internal partitions.
+ *
+ */
 struct part_persist_aggregation_state {
     // counters for each public partition
-    opal_atomic_uint32_t* internal_parts_ready;
+    opal_atomic_uint32_t *internal_parts_ready;
 
     // parameters for message aggregation
-    int aggregation_count;              // how many partitions may be aggregated
+    int aggregation_count; // how many public partitions may be aggregated into an internal one
     int internal_partition_count;
     int public_partition_count;
 
@@ -28,14 +44,46 @@ struct part_persist_aggregation_state {
     opal_ring_buffer_t public_parts_ready;
 };
 
-void part_persist_aggregate_simple_init(struct part_persist_aggregation_state* state, int internal_partition_count, int public_partition_count);
+/**
+ * @brief initializes the aggregation scheme
+ *
+ * @param[out] state                pointer to aggregation state object
+ * @param internal_partition_count  number of internal partitions (i.e. number of messages per
+ * partitioned transfer)
+ * @param public_partition_count    number of public partitions (i.e. the partitioning used in
+ * pready/parrived)
+ */
+void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
+                                        int internal_partition_count, int public_partition_count);
 
-void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state* state);
+/**
+ * @brief resets the aggregation scheme
+ *
+ * @param[out] state                pointer to aggregation state object
+ */
+void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state);
 
-int part_persist_aggregate_simple_elements(struct part_persist_aggregation_state* state);
+/**
+ * @brief insert a public partition
+ *
+ * @param[in,out] state             pointer to aggregation state object
+ * @param partition                 index of the public partition to insert
+ */
+void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state,
+                                        int partition);
 
-void part_persist_aggregate_simple_push(struct part_persist_aggregation_state* state, int partition);
+/**
+ * @brief extracts an internal partition such that all corresponding public partitions have already
+ * been inserted
+ *
+ * @param[in,out] state             pointer to aggregation state object
+ * @return                          the index of the public partition, -1 if none available
+ */
+int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state *state);
 
-int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state* state);
-
-void part_persist_aggregate_simple_free(struct part_persist_aggregation_state* state);
+/**
+ * @brief destroys the aggregation scheme
+ *
+ * @param[in,out] state             pointer to aggregation state object
+ */
+void part_persist_aggregate_simple_free(struct part_persist_aggregation_state *state);
