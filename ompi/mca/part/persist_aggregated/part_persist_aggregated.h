@@ -119,8 +119,10 @@ mca_part_persist_aggregated_free_req(struct mca_part_persist_aggregated_request_
     OBJ_RELEASE(req->progress_elem);
 
     // if on sender side, free aggregation state
-    if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type)
-    part_persist_aggregate_simple_free(&req->aggregation_state);
+    if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) {
+        mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *) req;
+        part_persist_aggregate_simple_free(&sendreq->aggregation_state);
+    }
 
     for(i = 0; i < req->real_parts; i++) {
         ompi_request_free(&(req->persist_aggregated_reqs[i]));
@@ -247,22 +249,23 @@ mca_part_persist_aggregated_progress(void)
     OPAL_LIST_FOREACH(current, ompi_part_persist_aggregated.progress_list, mca_part_persist_aggregated_list_t) {
         mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *) current->item;
 
+        // get internal partitions that can be sent/queued
+        if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) 
+        {
+            mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *) req;
 
-        // on sender side: get internal partitions that can be sent/queued
-        if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) {
             int flag_value;
-            if(true == req->initialized)
-            {
+            if(true == req->initialized) {
                 flag_value = 0;     /* Mark partition as ready for testing */
             } else {
                 flag_value = -2;    /* Mark partition as queued */
             }
-
+        
             int internal_part;
-            while(0 <= (internal_part = part_persist_aggregate_simple_pull(&req->aggregation_state))) {
+            while(0 <= (internal_part = part_persist_aggregate_simple_pull(&sendreq->aggregation_state))) {
                 if(true == req->initialized)
                     err = req->persist_aggregated_reqs[internal_part]->req_start(1, (&(req->persist_aggregated_reqs[internal_part])));
-
+        
                 req->flags[internal_part] = flag_value;
             }
         }
@@ -314,7 +317,7 @@ mca_part_persist_aggregated_progress(void)
 
 
 
-		    /* Set up persistent sends */
+		            /* Set up persistent sends */
                     req->persist_aggregated_reqs = (ompi_request_t**) malloc(sizeof(ompi_request_t*)*(req->real_parts));
                     req->flags = (int*) calloc(req->real_parts,sizeof(int));
 
@@ -329,7 +332,7 @@ mca_part_persist_aggregated_progress(void)
                             void *buf = ((void*) (((char*)req->req_addr) + (req->real_count * req->real_dt_size * i)));
                             err = MCA_PML_CALL(irecv_init(buf, req->real_count * req->real_dt_size, MPI_BYTE, req->world_peer, req->my_send_tag+i, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
                         }
-		    }
+		            }
                     err = req->persist_aggregated_reqs[0]->req_start(req->real_parts, (&(req->persist_aggregated_reqs[0])));                     
 
                     /* Send back a message */
@@ -505,7 +508,7 @@ mca_part_persist_aggregated_psend_init(const void* buf,
     req->setup_info[0].count = req->real_count;
 
     // init aggregation state
-    part_persist_aggregate_simple_init(&req->aggregation_state, req->real_parts, parts);
+    part_persist_aggregate_simple_init(&sendreq->aggregation_state, req->real_parts, parts);
 
     req->flags = (int*) calloc(req->real_parts, sizeof(int));
 
@@ -552,7 +555,8 @@ mca_part_persist_aggregated_start(size_t count, ompi_request_t** requests)
 
         // reset aggregation state here
         if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) {
-            part_persist_aggregate_simple_reset(&req->aggregation_state);
+            mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *)(req);
+            part_persist_aggregate_simple_reset(&sendreq->aggregation_state);
         }
 
         /* First use is a special case, to support lazy initialization */
@@ -602,10 +606,11 @@ mca_part_persist_aggregated_pready(size_t min_part,
         err = OMPI_ERROR;
 
     // 
+    mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *)(req);
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        part_persist_aggregate_simple_push(&req->aggregation_state, i);
+        part_persist_aggregate_simple_push(&sendreq->aggregation_state, i);
     }
-        
+      
     return err;
 }
 
