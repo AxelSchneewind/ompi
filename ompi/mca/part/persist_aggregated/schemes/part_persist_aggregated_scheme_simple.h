@@ -22,7 +22,10 @@
  * inserted.
  */
 
-#pragma once // TODO switch to traditional header guards
+#ifndef PART_persist_aggregated_scheme_simple_H
+#define PART_persist_aggregated_scheme_simple_H
+
+#include "ompi_config.h"
 
 #include "opal/class/opal_ring_buffer.h"
 #include "opal/include/opal_stdatomic.h"
@@ -87,3 +90,5 @@ int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state *st
  * @param[in,out] state             pointer to aggregation state object
  */
 void part_persist_aggregate_simple_free(struct part_persist_aggregation_state *state);
+
+#endif
