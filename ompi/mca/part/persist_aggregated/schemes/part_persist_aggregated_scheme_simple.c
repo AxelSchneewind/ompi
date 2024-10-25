@@ -13,6 +13,7 @@
 #include "part_persist_aggregated_scheme_simple.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 // wrapper around opal_ring_buffer operations to allow for positive integers (including 0) to be inserted
 static void *custom_ring_buffer_push(opal_ring_buffer_t *buffer, int internal_partition)
@@ -65,9 +66,7 @@ void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *
 {
     // reset flags
     if (NULL != state->internal_parts_ready) {
-        for (size_t i = 0; i < state->internal_partition_count; i++) {
-            state->internal_parts_ready[i] = 0;
-        }
+        memset(state->internal_parts_ready, 0, state->internal_partition_count * sizeof(opal_atomic_int32_t));
     }
 
     // clear ring buffer (should be empty already)
