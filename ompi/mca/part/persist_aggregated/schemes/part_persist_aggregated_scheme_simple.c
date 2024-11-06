@@ -33,18 +33,12 @@ static int internal_partition(struct part_persist_aggregation_state *state, int 
     return public_part / state->aggregation_count;
 }
 
-/**
- * @brief initializes the simple aggregation scheme
- * 
- * @param[out] state                    the aggregation object
- * @param[in] internal_partition_count  number of internal (transfer) partitions 
- * @param[in] public_partition_count    number of user-provided partitions
- */
 void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
-                                        int internal_partition_count, int public_partition_count)
+                                        int internal_partition_count, int public_partition_count, int last_internal_partition_size)
 {
     state->public_partition_count = public_partition_count;
     state->internal_partition_count = internal_partition_count;
+    state->last_internal_partition_size = last_internal_partition_size;
 
     state->aggregation_count = state->public_partition_count / state->internal_partition_count;
 
@@ -57,11 +51,6 @@ void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *s
     opal_ring_buffer_init(&state->public_parts_ready, state->public_partition_count + 1);
 }
 
-/**
- * @brief Resets the aggregation scheme by removing all public partitions from the aggregation state.
- * 
- * @param[in,out] state 
- */
 void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state)
 {
     // reset flags
@@ -75,12 +64,14 @@ void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *
     }
 }
 
-/**
- * @brief Inserts a user-partition
- * 
- * @param[in,out] state 
- * @param[in] partition 
- */
+static inline int is_last_partition(struct part_persist_aggregation_state *state, int partition) {
+    return (partition == state->internal_partition_count - 1);
+}
+
+static inline int num_public_parts(struct part_persist_aggregation_state *state, int partition) {
+    return is_last_partition(state, partition) ? state->last_internal_partition_size : state->aggregation_count;
+}
+
 void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state, int partition)
 {
     int internal_part = internal_partition(state, partition);
@@ -88,27 +79,16 @@ void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *s
     int count = opal_atomic_add_fetch_32(&state->internal_parts_ready[internal_part], 1);
 
     // push to buffer if internal partition is ready
-    if (count == state->aggregation_count) {
+    if (count == num_public_parts(state, internal_part)) {
         custom_ring_buffer_push(&state->public_parts_ready, internal_part);
     }
 }
 
-/**
- * @brief extracts an internal partition if available.
- * 
- * @param[in,out] state     
- * @return int      index of the available internal partition, otherwise -1
- */
 int part_persist_aggregate_simple_pull(struct part_persist_aggregation_state *state)
 {
     return custom_ring_buffer_pop(&state->public_parts_ready);
 }
 
-/**
- * @brief destroys the aggregation state object.
- * 
- * @param[in,out] state 
- */
 void part_persist_aggregate_simple_free(struct part_persist_aggregation_state *state)
 {
     if (state->internal_parts_ready != NULL)

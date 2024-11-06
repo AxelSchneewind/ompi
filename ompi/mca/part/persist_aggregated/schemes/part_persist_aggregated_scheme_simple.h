@@ -14,8 +14,8 @@
  * @file
  * This file defines a simple message aggregation scheme:
  * A user-provided partitioning of n partitions of size b can be mapped
- * to an internal partitioning of n/k partitions of size k*b, where k can be selected
- * to optimize internal partition size.
+ * to an internal partitioning of n/k partitions of size k*b,
+ * where k can be selected to optimize internal partition size.
  *
  * This scheme can be used via a queue-like interface, where user-partitions can be pushed
  * and internal partitions can be pulled as soon as all corresponding user-partitions have been
@@ -40,31 +40,39 @@ struct part_persist_aggregation_state {
 
     // parameters for message aggregation
     int aggregation_count; // how many public partitions may be aggregated into an internal one
+
     int internal_partition_count;
     int public_partition_count;
+    int last_internal_partition_size; // number of public partitions corresponding to last internal
+                                      // one
 
-    // buffer for public partitions ready to send
+    // buffer for public partitions that are ready to send
     opal_ring_buffer_t public_parts_ready;
 };
 
 /**
  * @brief initializes the aggregation scheme
  *
- * @param[out] state                    pointer to aggregation state object
- * @param[in] internal_partition_count  number of internal partitions (i.e. number of messages per
- * partitioned transfer)
- * @param[in] public_partition_count    number of public partitions (i.e. the partitioning used in
- * pready/parrived)
+ * @param[out] state                        pointer to aggregation state object
+ * @param[in] internal_partition_count      number of internal partitions (i.e. number of messages
+ * per partitioned transfer)
+ * @param[in] public_partition_count        number of public partitions (i.e. the partitioning used
+ * in pready/parrived)
+ * @param[in] last_internal_partition_size  number of public partitions corresponding to last
+ * internal partition
  */
 OMPI_DECLSPEC void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
-                                        int internal_partition_count, int public_partition_count);
+                                                      int internal_partition_count,
+                                                      int public_partition_count,
+                                                      int last_internal_partition_size);
 
 /**
  * @brief resets the aggregation scheme
  *
  * @param[out] state                pointer to aggregation state object
  */
-OMPI_DECLSPEC void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state);
+OMPI_DECLSPEC void
+part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state);
 
 /**
  * @brief insert a public partition
@@ -73,7 +81,7 @@ OMPI_DECLSPEC void part_persist_aggregate_simple_reset(struct part_persist_aggre
  * @param[in] partition             index of the public partition to insert
  */
 OMPI_DECLSPEC void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state,
-                                        int partition);
+                                                      int partition);
 
 /**
  * @brief extracts an internal partition such that all corresponding public partitions have already
