@@ -30,7 +30,7 @@
 #include <alloca.h>
 #endif
 
-#include<math.h>
+#include <math.h>
 
 #include "ompi_config.h"
 #include "ompi/request/request.h"
@@ -84,8 +84,8 @@ struct ompi_part_persist_aggregated_t {
     int32_t                my_world_rank; /* Because the back end communicators use a world rank, we need to communicate ours 
                                              to set up the requests. */
 
-    uint32_t min_message_size;          /* parameters to control internal partitioning */
-    uint32_t max_message_count;
+    uint32_t               min_message_size;          /* parameters to control internal partitioning */
+    uint32_t               max_message_count;
 
     opal_atomic_int32_t    block_entry;
     opal_mutex_t lock; 
@@ -98,9 +98,14 @@ extern ompi_part_persist_aggregated_t ompi_part_persist_aggregated;
  * @brief selects an internal partitioning based on the user-provided partitioning
  * and the mca parameters for minimal partition size and maximal partition count.
  * 
- * More precisely, given a partitioning into p partitions of size c, computes
- * an internal partitioning into p' partitions of size c' with remainder r such that
- *      p * c = p' * c' + r * c
+ * More precisely, given a partitioning into p partitions of size s, computes
+ * an internal partitioning into p' partitions of size s' (apart from the last one,
+ * which has potentially different size r)
+ *      p * s = (p' - 1) * s' + r * s
+ * where
+ *      s' >= s
+ *      p' <= p
+ *      0 < r * s <= s'
  * and
  *      s' <= max_message_count
  *      p' >= min_message_size
@@ -187,6 +192,7 @@ mca_part_persist_aggregated_free_req(struct mca_part_persist_aggregated_request_
     } else {
         MCA_PART_persist_aggregated_PSEND_REQUEST_RETURN(req);
     }
+
     return err;
 }
 
@@ -348,18 +354,23 @@ mca_part_persist_aggregated_progress(void)
 
                     /* Set up persistent sends */
                     req->persist_aggregated_reqs = (ompi_request_t**) malloc(sizeof(ompi_request_t*)*(req->real_parts));
-                    for(i = 0; i < req->real_parts; i++) {
+                    for(i = 0; i < req->real_parts - 1; i++) {
                          void *buf = ((void*) (((char*)req->req_addr) + (bytes * i)));
                          err = MCA_PML_CALL(isend_init(buf, req->real_count, req->req_datatype, req->world_peer, req->my_send_tag+i, MCA_PML_BASE_SEND_STANDARD, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
                     }    
+
+                    /* Set up persistent send for last partition */
+                    void *buf = ((void*) (((char*)req->req_addr) + (bytes * i)));
+                    err = MCA_PML_CALL(isend_init(buf, req->real_remainder, req->req_datatype, req->world_peer, req->my_send_tag+i, MCA_PML_BASE_SEND_STANDARD, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
                 } else {
                     /* parse message */
-                    req->world_peer   = req->setup_info[1].world_rank; 
-                    req->my_send_tag  = req->setup_info[1].start_tag;
-                    req->my_recv_tag  = req->setup_info[1].setup_tag;
-                    req->real_parts   = req->setup_info[1].num_parts;
-                    req->real_count   = req->setup_info[1].count;
-                    req->real_dt_size = req->setup_info[1].dt_size;
+                    req->world_peer     = req->setup_info[1].world_rank; 
+                    req->my_send_tag    = req->setup_info[1].start_tag;
+                    req->my_recv_tag    = req->setup_info[1].setup_tag;
+                    req->real_parts     = req->setup_info[1].num_parts;
+                    req->real_count     = req->setup_info[1].count;
+                    req->real_remainder = req->setup_info[1].remainder;
+                    req->real_dt_size   = req->setup_info[1].dt_size;
 
 
                     err = opal_datatype_type_size(&(req->req_datatype->super), &dt_size_);
@@ -367,24 +378,31 @@ mca_part_persist_aggregated_progress(void)
                     dt_size = (dt_size_ > (size_t) INT_MAX) ? MPI_UNDEFINED : (int) dt_size_;
                     int32_t bytes = req->real_count * dt_size;
 
-
-
-		            /* Set up persistent sends */
+                    /* Set up persistent sends */
                     req->persist_aggregated_reqs = (ompi_request_t**) malloc(sizeof(ompi_request_t*)*(req->real_parts));
                     req->flags = (int*) calloc(req->real_parts,sizeof(int));
 
                     if(req->real_dt_size == dt_size) {
-
-     	                for(i = 0; i < req->real_parts; i++) {
+                        for(i = 0; i < req->real_parts - 1; i++) {
                             void *buf = ((void*) (((char*)req->req_addr) + (bytes * i)));
                             err = MCA_PML_CALL(irecv_init(buf, req->real_count, req->req_datatype, req->world_peer, req->my_send_tag+i, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
                         }
+
+                        /** last partition has different size */
+                        void *buf = ((void*) (((char*)req->req_addr) + (bytes * i)));
+                        assert(req->req_bytes == bytes * i + req->real_remainder * dt_size);
+                        err = MCA_PML_CALL(irecv_init(buf, req->real_remainder, req->req_datatype, req->world_peer, req->my_send_tag+i, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
                     } else {
-                        for(i = 0; i < req->real_parts; i++) {
+                        for(i = 0; i < req->real_parts - 1; i++) {
                             void *buf = ((void*) (((char*)req->req_addr) + (req->real_count * req->real_dt_size * i)));
                             err = MCA_PML_CALL(irecv_init(buf, req->real_count * req->real_dt_size, MPI_BYTE, req->world_peer, req->my_send_tag+i, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
                         }
-		            }
+
+                        /** last partition has different size */
+                        void *buf = ((void*) (((char*)req->req_addr) + (req->real_count * req->real_dt_size * i)));
+                        assert(req->req_bytes == req->real_count * req->real_dt_size * i + req->real_remainder * req->real_dt_size);
+                        err = MCA_PML_CALL(irecv_init(buf, req->real_remainder * req->real_dt_size, MPI_BYTE, req->world_peer, req->my_send_tag+i, ompi_part_persist_aggregated.part_comm, &(req->persist_aggregated_reqs[i])));
+                    }
                     err = req->persist_aggregated_reqs[0]->req_start(req->real_parts, (&(req->persist_aggregated_reqs[0])));                     
 
                     /* Send back a message */
@@ -555,13 +573,16 @@ mca_part_persist_aggregated_psend_init(const void* buf,
     req->my_recv_tag = req->setup_info[0].setup_tag;
 
     // select internal partitioning (i.e. real_parts) here
-    size_t remainder;
-    part_persist_aggregated_select_internal_partitioning(parts, count, &req->real_parts, &req->real_count, &remainder);
+    size_t remaining_partitions;
+    part_persist_aggregated_select_internal_partitioning(parts, count, &req->real_parts, &req->real_count, &remaining_partitions);
+    req->real_remainder = remaining_partitions * count;      // convert to number of elements
     req->setup_info[0].num_parts = req->real_parts;         // setup info has to store internal partitioning
-    req->setup_info[0].count = req->real_count;
+    req->setup_info[0].count     = req->real_count;
+    req->setup_info[0].remainder = req->real_remainder;
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "mapped given %lu*%lu partitioning to internal partitioning of %lu*%lu + %lu\n", parts, count, req->real_parts - 1, req->real_count, req->real_remainder);
 
     // init aggregation state
-    part_persist_aggregate_simple_init(&sendreq->aggregation_state, req->real_parts, parts);
+    part_persist_aggregate_simple_init(&sendreq->aggregation_state, req->real_parts, parts, remaining_partitions);
 
     req->flags = (int*) calloc(req->real_parts, sizeof(int));
 
@@ -655,8 +676,9 @@ mca_part_persist_aggregated_pready(size_t min_part,
     size_t i;
     mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(request);
 
-    if (MCA_PART_persist_aggregated_REQUEST_PSEND != req->req_type)
-        err = OMPI_ERROR;
+    if (MCA_PART_persist_aggregated_REQUEST_PSEND != req->req_type) {
+        return OMPI_ERROR;
+    }
 
     // 
     mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *)(req);
