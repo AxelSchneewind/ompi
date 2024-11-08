@@ -100,7 +100,7 @@ extern ompi_part_persist_aggregated_t ompi_part_persist_aggregated;
  * 
  * More precisely, given a partitioning into p partitions of size s, computes
  * an internal partitioning into p' partitions of size s' (apart from the last one,
- * which has potentially different size r)
+ * which has potentially different size r):
  *      p * s = (p' - 1) * s' + r * s
  * where
  *      s' >= s
@@ -111,13 +111,13 @@ extern ompi_part_persist_aggregated_t ompi_part_persist_aggregated;
  *      p' >= min_message_size
  * (given by mca parameters).
  * 
- * @param[in] partitions            number of user-provided partitions
- * @param[in] count                 size of user-provided partitions
+ * @param[in]  partitions           number of user-provided partitions
+ * @param[in]  count                size of user-provided partitions in elements
  * @param[out] internal_partitions  number of internal partitions
- * @param[out] internal_count       size of internal partitions
+ * @param[out] factor               number of public partitions corresponding to each internal partitions other than the last one
  * @param[out] last_size            number of public partitions corresponding to the last internal partition
  */
-static inline void part_persist_aggregated_select_internal_partitioning(size_t partitions, size_t part_size, size_t* internal_partitions, size_t* internal_part_size, size_t* remainder) {
+static inline void part_persist_aggregated_select_internal_partitioning(size_t partitions, size_t part_size, size_t* internal_partitions, size_t* factor, size_t* remainder) {
     size_t buffer_size = partitions * part_size;
     int min_part_size  = ompi_part_persist_aggregated.min_message_size;
     int max_part_count = ompi_part_persist_aggregated.max_message_count;
@@ -132,35 +132,28 @@ static inline void part_persist_aggregated_select_internal_partitioning(size_t p
         max_part_count = buffer_size / min_part_size;
     }
 
-    // if min_part_size too large, can't repartition
-    if (min_part_size > buffer_size) return;
-
     if (part_size < min_part_size || partitions > max_part_count) {    // have to use larger partititions
-        // solve p = (p' - 1) * a + r for a and r
-        int aggregation_factor = min_part_size / part_size;
-        *internal_partitions = partitions / aggregation_factor;
+        // solve p = (p' - 1) * a + r for a (factor) and r (remainder)
+        *factor = min_part_size / part_size;
+        *internal_partitions = partitions / *factor;
         *remainder = partitions % (*internal_partitions);
 
-        *internal_part_size = aggregation_factor * part_size;
-
-        if (*remainder == 0) {      // we still need size of last partition, which now corresponds to one 
-            *remainder = aggregation_factor;
-        } else {                    // number of partitions was floored, so add 1 for last (smaller) partition
+        if (*remainder == 0) { // we still need the size of last partition
+            *remainder = *factor;
+        } else {               // number of partitions was floored, so add 1 for last (smaller) partition
             *internal_partitions += 1;
         }
     } else {    // can keep original partitioning
-        *internal_part_size = part_size;
         *internal_partitions = partitions;
+        *factor = 1;
         *remainder = 1;
     }
 
     // check if anything went wrong
-    if (!( *internal_partitions <= partitions && *internal_part_size >= part_size
-          && ((*internal_part_size) * (*internal_partitions - 1) + (*remainder * part_size)) == (partitions * part_size))) {
-        opal_output_verbose(0, ompi_part_base_framework.framework_output, "given %lu*%lu partitioning and internal partitioning of %lu*%lu + %lu*%lu are inconsistent\n", partitions, part_size, *internal_partitions - 1, *internal_part_size, *remainder, part_size);
+    if (!( *internal_partitions <= partitions && *factor >= 1
+          && ((*factor) * (*internal_partitions - 1) + (*remainder * part_size)) == (partitions * part_size))) {
+        opal_output_verbose(0, ompi_part_base_framework.framework_output, "given %lu*%lu partitioning and internal partitioning of %lu*%lu + %lu*%lu are inconsistent\n", partitions, part_size, *internal_partitions - 1, *factor * part_size, *remainder, part_size);
     }
-
-    opal_output_verbose(5, ompi_part_base_framework.framework_output, "mapped given %lu*%lu partitioning to internal partitioning of %lu*%lu + %lu*%lu\n", partitions, part_size, *internal_partitions - 1, *internal_part_size, *remainder, part_size);
 }
 
 
@@ -574,9 +567,11 @@ mca_part_persist_aggregated_psend_init(const void* buf,
 
     // select internal partitioning (i.e. real_parts) here
     size_t remaining_partitions;
-    part_persist_aggregated_select_internal_partitioning(parts, count, &req->real_parts, &req->real_count, &remaining_partitions);
+    size_t factor;
+    part_persist_aggregated_select_internal_partitioning(parts, count, &req->real_parts, &factor, &remaining_partitions);
     req->real_remainder = remaining_partitions * count;      // convert to number of elements
-    req->setup_info[0].num_parts = req->real_parts;         // setup info has to store internal partitioning
+    req->real_count = factor * count;
+    req->setup_info[0].num_parts = req->real_parts;         // setup info has to contain internal partitioning
     req->setup_info[0].count     = req->real_count;
     req->setup_info[0].remainder = req->real_remainder;
     opal_output_verbose(5, ompi_part_base_framework.framework_output, "mapped given %lu*%lu partitioning to internal partitioning of %lu*%lu + %lu\n", parts, count, req->real_parts - 1, req->real_count, req->real_remainder);
