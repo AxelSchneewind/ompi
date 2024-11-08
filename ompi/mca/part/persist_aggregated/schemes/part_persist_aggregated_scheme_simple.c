@@ -34,13 +34,15 @@ static int internal_partition(struct part_persist_aggregation_state *state, int 
 }
 
 void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
-                                        int internal_partition_count, int public_partition_count, int last_internal_partition_size)
+                                        int internal_partition_count, int factor, int last_internal_partition_size)
 {
-    state->public_partition_count = public_partition_count;
+    state->public_partition_count = (internal_partition_count - 1) * factor + last_internal_partition_size;
     state->internal_partition_count = internal_partition_count;
-    state->last_internal_partition_size = last_internal_partition_size;
 
-    state->aggregation_count = state->public_partition_count / state->internal_partition_count;
+    // number of user-partitions per internal partition (except for the last one)
+    state->aggregation_count = factor;
+    // number of user-partitions corresponding to the last internal partition
+    state->last_internal_partition_size = last_internal_partition_size;
 
     // initialize counters
     state->internal_parts_ready = (opal_atomic_int32_t *) calloc(state->internal_partition_count,

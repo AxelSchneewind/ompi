@@ -56,14 +56,13 @@ struct part_persist_aggregation_state {
  * @param[out] state                        pointer to aggregation state object
  * @param[in] internal_partition_count      number of internal partitions (i.e. number of messages
  * per partitioned transfer)
- * @param[in] public_partition_count        number of public partitions (i.e. the partitioning used
- * in pready/parrived)
+ * @param[in] factor                        number of public partitions corresponding to each internal one other than the last
  * @param[in] last_internal_partition_size  number of public partitions corresponding to last
  * internal partition
  */
 OMPI_DECLSPEC void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *state,
                                                       int internal_partition_count,
-                                                      int public_partition_count,
+                                                      int factor,
                                                       int last_internal_partition_size);
 
 /**

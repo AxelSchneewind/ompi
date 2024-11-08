@@ -577,7 +577,7 @@ mca_part_persist_aggregated_psend_init(const void* buf,
     opal_output_verbose(5, ompi_part_base_framework.framework_output, "mapped given %lu*%lu partitioning to internal partitioning of %lu*%lu + %lu\n", parts, count, req->real_parts - 1, req->real_count, req->real_remainder);
 
     // init aggregation state
-    part_persist_aggregate_simple_init(&sendreq->aggregation_state, req->real_parts, parts, remaining_partitions);
+    part_persist_aggregate_simple_init(&sendreq->aggregation_state, req->real_parts, req->real_count / count, remaining_partitions);
 
     req->flags = (int*) calloc(req->real_parts, sizeof(int));
 
