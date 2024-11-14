@@ -55,7 +55,7 @@ do {                                                                         \
  * @param datatype (IN)      User defined datatype.
  * @param src (IN)           Source rank w/in the communicator.
  * @param comm (IN)          Communicator.
- * @param persistent (IN)    Is this a persistent request.
+ * @param persistent (IN)    Is this a ersistent request.
  */
 #define MCA_PART_persist_aggregated_PRECV_REQUEST_INIT( request,                     \
                                          ompi_proc,                   \
