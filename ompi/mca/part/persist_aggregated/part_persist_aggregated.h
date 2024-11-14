@@ -656,7 +656,7 @@ mca_part_persist_aggregated_pready(size_t min_part,
     mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *)(req);
     int internal_part_ready;
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        part_persist_aggregate_simple_push(&sendreq->aggregation_state, i, &internal_part_ready);
+        part_persist_aggregate_simple_pready(&sendreq->aggregation_state, i, &internal_part_ready);
 
         if (-1 != internal_part_ready) {
             if(true == req->initialized)

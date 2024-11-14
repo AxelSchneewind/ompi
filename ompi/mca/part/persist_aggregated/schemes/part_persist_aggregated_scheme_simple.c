@@ -33,15 +33,15 @@ void part_persist_aggregate_simple_init(struct part_persist_aggregation_state *s
     state->last_internal_partition_size = last_internal_partition_size;
 
     // initialize counters
-    state->internal_parts_ready = (opal_atomic_uint32_t *) calloc(state->internal_partition_count,
+    state->public_parts_ready = (opal_atomic_uint32_t *) calloc(state->internal_partition_count,
                                                                  sizeof(opal_atomic_uint32_t));
 }
 
 void part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state)
 {
     // reset flags
-    if (NULL != state->internal_parts_ready) {
-        memset((void*)state->internal_parts_ready, 0, state->internal_partition_count * sizeof(opal_atomic_uint32_t));
+    if (NULL != state->public_parts_ready) {
+        memset((void*)state->public_parts_ready, 0, state->internal_partition_count * sizeof(opal_atomic_uint32_t));
     }
 }
 
@@ -53,12 +53,12 @@ static inline int num_public_parts(struct part_persist_aggregation_state *state,
     return is_last_partition(state, partition) ? state->last_internal_partition_size : state->aggregation_count;
 }
 
-void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state, int partition, int* available_partition)
+void part_persist_aggregate_simple_pready(struct part_persist_aggregation_state *state, int partition, int* available_partition)
 {
     int internal_part = internal_partition(state, partition);
 
     // this is the new value (after adding)
-    int count = opal_atomic_add_fetch_32(&state->internal_parts_ready[internal_part], 1);
+    int count = opal_atomic_add_fetch_32(&state->public_parts_ready[internal_part], 1);
 
     // push to buffer if internal partition is ready
     if (count == num_public_parts(state, internal_part)) {
@@ -70,7 +70,7 @@ void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *s
 
 void part_persist_aggregate_simple_free(struct part_persist_aggregation_state *state)
 {
-    if (state->internal_parts_ready != NULL)
-        free((void*)state->internal_parts_ready);
-    state->internal_parts_ready = NULL;
+    if (state->public_parts_ready != NULL)
+        free((void*)state->public_parts_ready);
+    state->public_parts_ready = NULL;
 }
