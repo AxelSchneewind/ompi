@@ -297,27 +297,6 @@ mca_part_persist_aggregated_progress(void)
     OPAL_LIST_FOREACH(current, ompi_part_persist_aggregated.progress_list, mca_part_persist_aggregated_list_t) {
         mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *) current->item;
 
-        // get internal partitions that can be sent/queued
-        if (MCA_PART_persist_aggregated_REQUEST_PSEND == req->req_type) 
-        {
-            mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *) req;
-
-            int flag_value;
-            if(true == req->initialized) {
-                flag_value = 0;     /* Mark partition as ready for testing */
-            } else {
-                flag_value = -2;    /* Mark partition as queued */
-            }
-        
-            int internal_part;
-            while(0 <= (internal_part = part_persist_aggregate_simple_pull(&sendreq->aggregation_state))) {
-                if(true == req->initialized)
-                    err = req->persist_aggregated_reqs[internal_part]->req_start(1, (&(req->persist_aggregated_reqs[internal_part])));
-        
-                req->flags[internal_part] = flag_value;
-            }
-        }
-
         /* Check to see if request is initialized */
         if(false == req->initialized) {
             int done = 0; 
@@ -665,14 +644,26 @@ mca_part_persist_aggregated_pready(size_t min_part,
     size_t i;
     mca_part_persist_aggregated_request_t *req = (mca_part_persist_aggregated_request_t *)(request);
 
-    if (MCA_PART_persist_aggregated_REQUEST_PSEND != req->req_type) {
-        return OMPI_ERROR;
+
+    int flag_value;
+    if(true == req->initialized) {
+        flag_value = 0;     /* Mark partition as ready for testing */
+    } else {
+        flag_value = -2;    /* Mark partition as queued */
     }
 
     // 
     mca_part_persist_aggregated_psend_request_t *sendreq = (mca_part_persist_aggregated_psend_request_t *)(req);
+    int internal_part_ready;
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        part_persist_aggregate_simple_push(&sendreq->aggregation_state, i);
+        part_persist_aggregate_simple_push(&sendreq->aggregation_state, i, &internal_part_ready);
+
+        if (-1 != internal_part_ready) {
+            if(true == req->initialized)
+                err = req->persist_aggregated_reqs[internal_part_ready]->req_start(1, (&(req->persist_aggregated_reqs[internal_part_ready])));
+    
+            req->flags[internal_part_ready] = flag_value;
+        }
     }
       
     return err;
