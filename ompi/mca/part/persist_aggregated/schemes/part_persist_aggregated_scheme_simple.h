@@ -27,8 +27,8 @@
 
 #include "ompi_config.h"
 
-#include "opal/class/opal_ring_buffer.h"
-#include "opal/include/opal_stdatomic.h"
+#include "opal/include/opal/sys/atomic.h"
+
 
 /**
  * @brief tracks already inserted public partitions and available internal partitions.
@@ -45,9 +45,6 @@ struct part_persist_aggregation_state {
     int public_partition_count;
     int last_internal_partition_size; // number of public partitions corresponding to last internal
                                       // one
-
-    // buffer for public partitions that are ready to send
-    opal_ring_buffer_t public_parts_ready;
 };
 
 /**
@@ -78,9 +75,10 @@ part_persist_aggregate_simple_reset(struct part_persist_aggregation_state *state
  *
  * @param[in,out] state             pointer to aggregation state object
  * @param[in] partition             index of the public partition to insert
+ * @param[out] available_partition  index of the internal partition if it is ready, otherwise -1
  */
 OMPI_DECLSPEC void part_persist_aggregate_simple_push(struct part_persist_aggregation_state *state,
-                                                      int partition);
+                                                      int partition, int* available_partition);
 
 /**
  * @brief extracts an internal partition such that all corresponding public partitions have already
