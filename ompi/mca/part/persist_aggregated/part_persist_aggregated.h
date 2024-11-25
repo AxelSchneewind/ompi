@@ -121,16 +121,16 @@ static inline void part_persist_aggregated_select_internal_partitioning(size_t p
     int max_part_count = ompi_part_persist_aggregated.max_message_count;
 
     // check if max_part_count imposes higher limit on partition size
-    if ((buffer_size / max_part_count) > min_part_size) {
+    if (max_part_count > 0 && (buffer_size / max_part_count) > min_part_size) {
         min_part_size = buffer_size / max_part_count;
     }
 
-    // check if min_part_size imposes lower limit on partition count
-    if ((buffer_size / min_part_size) < max_part_count) {
-        max_part_count = buffer_size / min_part_size;
+    // cannot have partitions larger than buffer size
+    if (min_part_size > buffer_size) {
+	    min_part_size = buffer_size;
     }
 
-    if (part_size < min_part_size || partitions > max_part_count) {    // have to use larger partititions
+    if (part_size < min_part_size) {    // have to use larger partititions
         // solve p = (p' - 1) * a + r for a (factor) and r (remainder)
         *factor = min_part_size / part_size;
         *internal_partitions = partitions / *factor;
