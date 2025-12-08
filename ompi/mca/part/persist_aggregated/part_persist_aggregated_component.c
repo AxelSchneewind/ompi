@@ -89,7 +89,7 @@ mca_part_persist_aggregated_component_register(void)
     // variable for minimal internal partition size
     ompi_part_persist_aggregated.min_message_size = 4096;
     (void) mca_base_component_var_register(&mca_part_persist_aggregated_component.partm_version, "min_message_size",
-                                           "Minimal size of transferred messages (internal partitions)",
+                                           "Minimum size of transferred messages (internal partitions)",
                                            MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL, 0, 0,
                                            OPAL_INFO_LVL_9,
                                            MCA_BASE_VAR_SCOPE_READONLY,
@@ -98,7 +98,7 @@ mca_part_persist_aggregated_component_register(void)
     // variable for maximal internal partition count
     ompi_part_persist_aggregated.max_message_count = 4096;
     (void) mca_base_component_var_register(&mca_part_persist_aggregated_component.partm_version, "max_message_count",
-                                           "Maximal number of transferred messages (internal partitions)",
+                                           "Maximum number of transferred messages (internal partitions)",
                                            MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL, 0, 0,
                                            OPAL_INFO_LVL_9,
                                            MCA_BASE_VAR_SCOPE_READONLY,
