@@ -44,7 +44,7 @@ OBJ_CLASS_DECLARATION(mca_part_persist_aggregated_precv_request_t);
 #define MCA_PART_persist_aggregated_PRECV_REQUEST_ALLOC(precvreq)                           \
 do {                                                                         \
     precvreq = (mca_part_persist_aggregated_precv_request_t*)                               \
-      opal_free_list_get (&mca_part_base_precv_requests);                    \
+      opal_free_list_get (&mca_part_persist_aggregated_precv_requests);                    \
     precvreq->req_base.req_type = MCA_PART_persist_aggregated_REQUEST_PRECV;            \
  } while (0)
 
@@ -96,7 +96,7 @@ do {                                                                  \
     OMPI_DATATYPE_RELEASE((recvreq)->req_datatype);            \
     OMPI_REQUEST_FINI(&(recvreq)->req_ompi);                   \
     opal_convertor_cleanup( &((recvreq)->req_convertor) );     \
-    opal_free_list_return ( &mca_part_base_precv_requests,               \
+    opal_free_list_return ( &mca_part_persist_aggregated_precv_requests,               \
                            (opal_free_list_item_t*)(recvreq));          \
 }
 
