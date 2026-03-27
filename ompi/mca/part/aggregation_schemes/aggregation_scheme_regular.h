@@ -18,8 +18,8 @@
  * where k can be selected to optimize internal partition size.
  */
 
-#ifndef PART_PERSIST_AGGREGATED_SCHEME_REGULAR_H
-#define PART_PERSIST_AGGREGATED_SCHEME_REGULAR_H
+#ifndef AGGREGATION_SCHEME_REGULAR_H
+#define AGGREGATION_SCHEME_REGULAR_H
 
 #include "ompi_config.h"
 
@@ -53,7 +53,7 @@ struct part_persist_aggregation_state {
  * @param[in] last_internal_partition_size  number of public partitions corresponding to last
  * internal partition
  */
-OMPI_DECLSPEC void part_persist_aggregate_regular_init(struct part_persist_aggregation_state *state,
+OMPI_DECLSPEC void aggregation_scheme_regular_init(struct part_persist_aggregation_state *state,
                                                       int internal_partition_count,
                                                       int factor,
                                                       int last_internal_partition_size);
@@ -64,7 +64,7 @@ OMPI_DECLSPEC void part_persist_aggregate_regular_init(struct part_persist_aggre
  * @param[out] state                pointer to aggregation state object
  */
 OMPI_DECLSPEC void
-part_persist_aggregate_regular_reset(struct part_persist_aggregation_state *state);
+aggregation_scheme_regular_reset(struct part_persist_aggregation_state *state);
 
 /**
  * @brief marks a public partition as ready
@@ -73,7 +73,7 @@ part_persist_aggregate_regular_reset(struct part_persist_aggregation_state *stat
  * @param[in] partition             index of the public partition to mark ready
  * @param[out] available_partition  index of the internal partition if it is ready, otherwise -1
  */
-OMPI_DECLSPEC void part_persist_aggregate_regular_pready(struct part_persist_aggregation_state *state,
+OMPI_DECLSPEC void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *state,
                                                       int partition, int* available_partition);
 
 /**
@@ -81,6 +81,6 @@ OMPI_DECLSPEC void part_persist_aggregate_regular_pready(struct part_persist_agg
  *
  * @param[in,out] state             pointer to aggregation state object
  */
-OMPI_DECLSPEC void part_persist_aggregate_regular_free(struct part_persist_aggregation_state *state);
+OMPI_DECLSPEC void aggregation_scheme_regular_free(struct part_persist_aggregation_state *state);
 
 #endif
