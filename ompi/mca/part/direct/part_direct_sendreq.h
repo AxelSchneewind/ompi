@@ -26,7 +26,7 @@
 #ifndef PART_DIRECT_PSENDREQ_H
 #define PART_DIRECT_PSENDREQ_H
 
-#include "ompi/mca/part/aggregation_schemes/aggregation_scheme_interval_tree.h"
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_interval_tree.h"
  
 #include "ompi/mca/part/direct/part_direct_request.h"
 #include "ompi/mca/part/base/part_base_psendreq.h"
