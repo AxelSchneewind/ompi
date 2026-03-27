@@ -30,6 +30,8 @@ component_install =
 endif
 
 local_sources = \
+	aggregation_scheme_interval_tree.c \
+	aggregation_scheme_interval_tree.h \
 	aggregation_scheme_regular.c \
 	aggregation_scheme_regular.h
 
