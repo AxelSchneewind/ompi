@@ -96,6 +96,9 @@ mca_part_direct_component_open(void)
 
    //fprintf(stderr, "Open the direct component?\n");
 
+    OBJ_CONSTRUCT(&mca_part_direct_psend_requests, opal_free_list_t);
+    OBJ_CONSTRUCT(&mca_part_direct_precv_requests, opal_free_list_t);
+
     mca_part_direct_init_lists(); 
 
     ompi_part_direct.block_entry = 0;
