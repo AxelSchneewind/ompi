@@ -160,24 +160,25 @@ mca_part_direct_progress(void)
         mca_part_direct_request_t *req = (mca_part_direct_request_t *) current->item;
         if(MCA_PART_DIRECT_REQUEST_PSEND == req->req_type)
         {
-            if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round == req->tround) {
+            if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round != req->tround) {
                for(i = 0; i < req->parts; i++) {
                     /* Check to see if partition is queued for being started. Only applicable to sends. */ 
                     if(-2 ==  req->flags[i]) {
-   	  	        err = MPI_Put(req->buf + i*req->part_bytes, req->part_bytes, MPI_CHAR, 1,
+   	  	                err = MPI_Put(req->buf + i*req->part_bytes, req->part_bytes, MPI_CHAR, 1,
                                       i*req->part_bytes, req->part_bytes, MPI_CHAR, req->window);
                         assert(MPI_SUCCESS == err);
 
                         req->flags[i] = 0;
-			req->done_count++;
+			            req->done_count++;
                     }
                 }
 
                 /* Check for completion and complete the requests */
                 if(req->done_count == req->parts)
                 {
-	            /* Incriment round on reciever */
-		    MPI_Win_flush(1,req->window);
+	                /* Incriment round on reciever */
+                    req->round++;
+		            MPI_Win_flush(1,req->window);
                     MPI_Put(&req->round, 1, MPI_INT, 1, 0, 1, MPI_INT, req->window_flags);
                     MPI_Win_flush(1,req->window_flags);
 
@@ -186,9 +187,9 @@ mca_part_direct_progress(void)
             }	    
         } else {
             if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state) {
-		if(req->round == req->tround) {
-                    mca_part_direct_complete(req);
-		}
+		    if(req->round == req->tround) {
+                mca_part_direct_complete(req);
+		    }
 	    }
 	}
 
@@ -217,13 +218,13 @@ mca_part_direct_create_partition_communicator(MPI_Comm comm,
     int err = MPI_SUCCESS;
     MPI_Group group_super, group_sub;
 
-    err = MPI_Comm_group(comm, &group_super);
+    err = ompi_comm_group(comm, &group_super);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Group_incl(group_super, rank_count, ranks, &group_sub);
+    err = ompi_group_incl(group_super, rank_count, ranks, &group_sub);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Comm_create_group(comm, group_sub, 0, new_comm);
+    err = ompi_comm_create_group(comm, group_sub, 0, new_comm);
     assert(MPI_SUCCESS == err);
 }
 
@@ -289,8 +290,8 @@ mca_part_direct_precv_init(void *buf,
     err = MPI_Win_lock_all(1, req->window); fflush(stdout);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_create(&req->tround,
-                         1,
+    err = MPI_Win_create(&req->round,
+                         sizeof(int32_t),
                          sizeof(int32_t),
                          MPI_INFO_NULL,
                          req->comm,
@@ -384,8 +385,8 @@ mca_part_direct_psend_init(const void* buf,
     err = MPI_Win_lock_all(1, req->window); fflush(stdout);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_create(&req->tround,
-                         1,
+    err = MPI_Win_create(&req->round,
+                         sizeof(int32_t),
                          sizeof(int32_t),
                          MPI_INFO_NULL,
                          req->comm,
@@ -424,7 +425,7 @@ mca_part_direct_start(size_t count, ompi_request_t** requests)
 
     for(i = 0; i < _count && OMPI_SUCCESS == err; i++) {
         mca_part_direct_request_t *req = (mca_part_direct_request_t *)(requests[i]);
-	req->round++;
+	    req->tround++;
         if(MCA_PART_DIRECT_REQUEST_PSEND == req->req_type) {
             req->done_count = 0;
             for(i = 0; i < req->parts && OMPI_SUCCESS == err; i++) {
@@ -432,9 +433,9 @@ mca_part_direct_start(size_t count, ompi_request_t** requests)
             }
         } else {
             req->done_count = 0;
-	    /* Increment round on sender */
-	    MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
-	    MPI_Win_flush(0,req->window_flags);
+	        // /* Increment round on sender */
+	        // MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
+	        // MPI_Win_flush(0,req->window_flags);
         } 
         req->req_ompi.req_state = OMPI_REQUEST_ACTIVE;    
         req->req_ompi.req_status.MPI_TAG = MPI_ANY_TAG;
