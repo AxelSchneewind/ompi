@@ -21,6 +21,8 @@
 #ifndef PART_PERSIST_REQUEST_H
 #define PART_PERSIST_REQUEST_H
 
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_regular.h"
+
 #include "ompi/mca/part/base/part_base_psendreq.h"
 #include "ompi/mca/part/part.h"
 #include "opal/sys/atomic.h"
@@ -42,6 +44,8 @@ struct ompi_mca_persist_setup_t {
    size_t num_parts;
    size_t dt_size;
    size_t count;
+   size_t aggregation_factor;
+   size_t remainder;
 };
 
 
@@ -72,6 +76,7 @@ struct mca_part_persist_request_t {
 
     size_t real_parts;                   /**< internal number of partitions */
     size_t real_count;
+    size_t real_remainder;               /**< size of last internal partition (in elements) */
     size_t real_dt_size;                 /**< receiver needs to know how large the sender's datatype is. */
     size_t part_size; 
 
@@ -98,6 +103,7 @@ struct mca_part_persist_request_t {
   
     struct mca_part_persist_list_t* progress_elem; /**< pointer to progress list element for removal during free. */ 
 
+    struct part_persist_aggregation_state aggregation_state;
 };
 typedef struct mca_part_persist_request_t mca_part_persist_request_t;
 OBJ_CLASS_DECLARATION(mca_part_persist_request_t);
