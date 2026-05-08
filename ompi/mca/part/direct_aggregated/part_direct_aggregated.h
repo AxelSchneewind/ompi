@@ -37,6 +37,7 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/request/request.h"
 #include "opal/sys/atomic.h"
+#include "opal/class/opal_ring_buffer.h"
 
 #include "ompi/mca/part/direct_aggregated/part_direct_aggregated_request.h"
 #include "ompi/mca/part/base/part_base_precvreq.h"
@@ -59,6 +60,8 @@ struct ompi_part_direct_aggregated_t {
     int                    free_list_num;
     int                    free_list_max;
     int                    free_list_inc;
+    int                    min_message_size;
+    int                    max_message_count;
     opal_list_t           *progress_list;
 
     opal_atomic_int32_t    block_entry;
@@ -160,27 +163,38 @@ mca_part_direct_aggregated_progress(void)
         mca_part_direct_aggregated_request_t *req = (mca_part_direct_aggregated_request_t *) current->item;
         if(MCA_PART_DIRECT_AGGREGATED_REQUEST_PSEND == req->req_type)
         {
-            if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round == req->tround) {
-                /* Iterate through partition intervals that are queued for being started. Only applicable to sends. */ 
-                for (i = 0; i < req->available_count; i++)
-                {
-                    // both ends are inclusive
-                    struct partition_interval interval = req->available_intervals[i];
+            if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round != req->tround) {
+                mca_part_direct_aggregated_psend_request_t *sendreq = (mca_part_direct_aggregated_psend_request_t *) req;
 
-                    err = MPI_Put(req->buf + interval.begin * req->part_bytes, (interval.end - interval.begin + 1) * req->part_bytes, MPI_CHAR, 1,
-                                  interval.begin * req->part_bytes, req->part_bytes, MPI_CHAR, req->window);
+                /* Iterate through partition intervals that are queued for being started. Only applicable to sends. */ 
+                while( true )
+                {
+                    void* val = opal_ring_buffer_pop(&sendreq->available_intervals);
+                    if (NULL == val) break;
+
+                    // both ends are inclusive
+                    struct partition_interval interval;//sendreq->available_intervals[i];
+                    interval.as_ptr = val;
+
+                    size_t count = (interval.end - interval.begin + 1);
+                    printf("calling Put for partitions %i to %i (%lu)\n", interval.begin, interval.end, interval.as_ptr);
+                    err = MPI_Put(req->buf + interval.begin * req->part_bytes, count * req->part_bytes, 
+                                  MPI_CHAR, 1,
+                                  interval.begin * req->part_bytes, count * req->part_bytes, 
+                                  MPI_CHAR, req->window);
                     assert(MPI_SUCCESS == err);
 
                     req->done_count += interval.end - interval.begin + 1;
                 }
 
                 /* queue has been cleared */
-                req->available_count = 0;
+                // sendreq->available_count = 0;
 
                 /* Check for completion and complete the requests */
                 if(req->done_count == req->parts)
                 {
 	                /* Increment round on reciever */
+                    req->round++;
 
 		            MPI_Win_flush(1,req->window);
                     // req->window->w_osc_module->osc_flush(rank, req->win);
@@ -236,6 +250,45 @@ mca_part_direct_aggregated_create_partition_communicator(MPI_Comm comm,
     assert(MPI_SUCCESS == err);
 }
 
+static inline void part_direct_aggregated_select_internal_partitioning(size_t partitions, size_t part_size, size_t* internal_partitions, size_t* factor, size_t* remainder) {
+    size_t buffer_size = partitions * part_size;
+    int min_part_size  = ompi_part_direct_aggregated.min_message_size;
+    int max_part_count = ompi_part_direct_aggregated.max_message_count;
+
+    // check if max_part_count imposes higher limit on partition size
+    if (max_part_count > 0 && (buffer_size / max_part_count) > min_part_size) {
+        min_part_size = buffer_size / max_part_count;
+    }
+
+    // cannot have partitions larger than buffer size
+    if (min_part_size > buffer_size) {
+        min_part_size = buffer_size;
+    }
+
+    if (part_size < min_part_size) {    // have to use larger partititions
+        // solve p = (p' - 1) * a + r for a (factor) and r (remainder)
+        *factor = min_part_size / part_size;
+        *internal_partitions = partitions / *factor;
+        *remainder = partitions % (*internal_partitions);
+
+        if (0 == *remainder) { // we still need the size of the last partition
+            *remainder = *factor;
+        } else {               // number of partitions was floored, so add 1 for last (smaller) partition
+            *internal_partitions += 1;
+        }
+    } else {    // can keep original partitioning
+        *internal_partitions = partitions;
+        *factor = 1;
+        *remainder = 1;
+    }
+
+    // check if anything went wrong
+    if (*internal_partitions > partitions || *factor < 1
+          || ((*factor) * (*internal_partitions - 1) * part_size + (*remainder * part_size) != (partitions * part_size))) {
+        opal_output_verbose(0, ompi_part_base_framework.framework_output, "given %lu*%lu partitioning and internal partitioning of %lu*%lu + %lu*%lu are inconsistent\n", partitions, part_size, *internal_partitions - 1, (*factor) * part_size, *remainder, part_size);
+    }
+}
+
 
 __opal_attribute_always_inline__ static inline int
 mca_part_direct_aggregated_precv_init(void *buf,
@@ -275,6 +328,7 @@ mca_part_direct_aggregated_precv_init(void *buf,
     dt_size = (dt_size_ > (size_t) INT_MAX) ? MPI_UNDEFINED : (int) dt_size_;
     req->req_bytes = parts * count * dt_size;
 
+
     req->round = 0;
     req->tround = 0;
 
@@ -297,8 +351,8 @@ mca_part_direct_aggregated_precv_init(void *buf,
     err = MPI_Win_lock_all(1, req->window); fflush(stdout);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_create(&req->tround,
-                         1,
+    err = MPI_Win_create(&req->round,
+                         sizeof(int32_t),
                          sizeof(int32_t),
                          MPI_INFO_NULL,
                          req->comm,
@@ -373,12 +427,14 @@ mca_part_direct_aggregated_psend_init(const void* buf,
     req->tround = 0;
 
     /* init aggregation state */
-    int factor = 8; // TODO read from module (mca parameter)
+    size_t factor, remaining_partitions, parts_; // remaining_partitions and parts_ will be ignored. only aggregation factor relevant
+    part_direct_aggregated_select_internal_partitioning(parts, count, &parts_, &factor, &remaining_partitions);
     aggregation_scheme_rb_tree_init(&sendreq->aggregation_state, factor);
 
     /* init partition interval queue */
-    req->available_intervals = calloc(req->parts, sizeof(struct partition_interval));
-    req->available_count = 0;
+    opal_ring_buffer_init(&sendreq->available_intervals, req->parts);
+    // sendreq->available_intervals = calloc(req->parts, sizeof(struct partition_interval));
+    // sendreq->available_count = 0;
 
     int rank_super;
     err = MPI_Comm_rank(comm, &rank_super);
@@ -388,8 +444,9 @@ mca_part_direct_aggregated_psend_init(const void* buf,
     ranks[1] = dst;
     mca_part_direct_aggregated_create_partition_communicator(comm, rank_count, ranks, &req->comm);
 
-    err = MPI_Win_create((void*)buf,
+    err = MPI_Win_create(req->buf,
                          0,
+                         // req->req_bytes,
                          1,
                          MPI_INFO_NULL,
                          req->comm,
@@ -399,8 +456,8 @@ mca_part_direct_aggregated_psend_init(const void* buf,
     err = MPI_Win_lock_all(1, req->window); fflush(stdout);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_create(&req->tround,
-                         1,
+    err = MPI_Win_create(&req->round,
+                         sizeof(int32_t),
                          sizeof(int32_t),
                          MPI_INFO_NULL,
                          req->comm,
@@ -439,18 +496,18 @@ mca_part_direct_aggregated_start(size_t count, ompi_request_t** requests)
 
     for(i = 0; i < _count && OMPI_SUCCESS == err; i++) {
         mca_part_direct_aggregated_request_t *req = (mca_part_direct_aggregated_request_t *)(requests[i]);
-        req->round++;
+        req->tround++;
         if(MCA_PART_DIRECT_AGGREGATED_REQUEST_PSEND == req->req_type) {
             req->done_count = 0;
-            req->available_count = 0;
+            // req->available_count = 0;
 
             mca_part_direct_aggregated_psend_request_t *sendreq = (mca_part_direct_aggregated_psend_request_t *) req;
             aggregation_scheme_rb_tree_reset(&sendreq->aggregation_state);
         } else {
             req->done_count = 0;
-	        /* Increment round on sender */
-	        MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
-	        MPI_Win_flush(0,req->window_flags);
+	        // /* Increment round on sender */
+	        // MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
+	        // MPI_Win_flush(0,req->window_flags);
         } 
         req->req_ompi.req_state = OMPI_REQUEST_ACTIVE;    
         req->req_ompi.req_status.MPI_TAG = MPI_ANY_TAG;
@@ -477,11 +534,10 @@ mca_part_direct_aggregated_pready(size_t min_part,
     int left, right;
     int extracted = aggregation_scheme_rb_tree_pready_range(&sendreq->aggregation_state, min_part, max_part, &left, &right);
 
-    if (extracted && req->available_count < req->parts)
+    if (extracted)
     {   // interval ready to transfer
-        struct partition_interval* interval = &req->available_intervals[req->available_count++];
-        interval->begin = left;
-        interval->end   = right;
+        struct partition_interval interval = { .begin = left, .end = right };
+        opal_ring_buffer_push(&sendreq->available_intervals, interval.as_ptr);
     }
 
     return err;

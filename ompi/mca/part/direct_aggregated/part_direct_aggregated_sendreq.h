@@ -33,8 +33,21 @@
 #include "ompi/mca/part/part.h"
 #include "opal/prefetch.h"
 
+
+struct 
+partition_interval 
+{ 
+    union { 
+        struct { int begin; int end; } __attribute__((__packed__)) __attribute__((__aligned__));
+        struct { void* as_ptr; } __attribute__((__packed__)) __attribute__((__aligned__)); 
+    };
+};
+
 struct mca_part_direct_aggregated_psend_request_t {
     mca_part_direct_aggregated_request_t req_base;
+
+    // intervals to transfer
+    opal_ring_buffer_t available_intervals;
 
     struct part_persist_aggregation_state_it aggregation_state;
 };

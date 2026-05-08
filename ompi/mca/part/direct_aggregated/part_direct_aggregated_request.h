@@ -23,7 +23,7 @@
 
 #include "ompi/mca/part/base/part_base_psendreq.h"
 #include "ompi/mca/part/part.h"
-#include "opal/sys/atomic.h"
+#include "opal/class/opal_ring_buffer.h"
 /**
  * Type of request.
  */
@@ -75,10 +75,6 @@ struct mca_part_direct_aggregated_request_t {
     size_t req_bytes;                    /**< bytes for completion status */
 
     size_t part_bytes;                   /**< used for offset in put */
-
-    // intervals to transfer
-    struct partition_interval { int begin; int end; }* available_intervals;
-    size_t available_count;
 
     uint8_t * buf;
 
