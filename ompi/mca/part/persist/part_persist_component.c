@@ -117,6 +117,9 @@ mca_part_persist_component_open(void)
     ompi_part_persist.next_send_tag = 0;                /**< This is a counter for send tags for the actual data transfer. */
     ompi_part_persist.next_recv_tag = 0; 
 
+    OBJ_CONSTRUCT(&mca_part_persist_psend_requests, opal_free_list_t);
+    OBJ_CONSTRUCT(&mca_part_persist_precv_requests, opal_free_list_t);
+
     mca_part_persist_init_lists(); 
 
     ompi_part_persist.init_comms = 0;
@@ -133,6 +136,9 @@ mca_part_persist_component_open(void)
 static int
 mca_part_persist_component_close(void)
 {
+    OBJ_DESTRUCT(&mca_part_persist_psend_requests);
+    OBJ_DESTRUCT(&mca_part_persist_precv_requests);
+
     OBJ_DESTRUCT(&ompi_part_persist.lock);
     return OMPI_SUCCESS; 
 }
