@@ -42,6 +42,7 @@ struct ompi_mca_persist_setup_t {
    size_t num_parts;
    size_t dt_size;
    size_t count;
+   size_t remainder;
 };
 
 
@@ -72,6 +73,7 @@ struct mca_part_persist_request_t {
 
     size_t real_parts;                   /**< internal number of partitions */
     size_t real_count;
+    size_t real_remainder;               /**< size of last internal partition (in elements) */
     size_t real_dt_size;                 /**< receiver needs to know how large the sender's datatype is. */
     size_t part_size; 
 
