@@ -173,11 +173,11 @@ mca_part_direct_aggregated_progress(void)
                     if (NULL == val) break;
 
                     // both ends are inclusive
-                    struct partition_interval interval;//sendreq->available_intervals[i];
+                    struct partition_interval interval;
                     interval.as_ptr = val;
 
                     size_t count = (interval.end - interval.begin + 1);
-                    printf("calling Put for partitions %i to %i (%lu)\n", interval.begin, interval.end, interval.as_ptr);
+                    // printf("calling Put for partitions %i to %i (%lx)\n", interval.begin, interval.end, interval.as_ptr);
                     err = MPI_Put(req->buf + interval.begin * req->part_bytes, count * req->part_bytes, 
                                   MPI_CHAR, 1,
                                   interval.begin * req->part_bytes, count * req->part_bytes, 
@@ -187,8 +187,28 @@ mca_part_direct_aggregated_progress(void)
                     req->done_count += interval.end - interval.begin + 1;
                 }
 
-                /* queue has been cleared */
-                // sendreq->available_count = 0;
+                int mark_count = opal_atomic_fetch_add_size_t(&req->mark_count, 0);
+                if (mark_count == req->parts)
+                {
+                    // put remaining
+                    interval_state_t* remaining;
+                    size_t remaining_count;
+                    aggregation_scheme_interval_tree_remaining(&sendreq->aggregation_state, &remaining, &remaining_count);
+
+                    for (size_t r = 0; r < remaining_count; r++)
+                    {
+                        interval_state_t interval = remaining[r];
+                        size_t count = (interval.right - interval.left + 1);
+                        // printf("calling Put for partitions %i to %i\n", interval.left, interval.right);
+                        err = MPI_Put(req->buf + interval.left * req->part_bytes, count * req->part_bytes, 
+                                      MPI_CHAR, 1,
+                                      interval.left * req->part_bytes, count * req->part_bytes, 
+                                      MPI_CHAR, req->window);
+                        assert(MPI_SUCCESS == err);
+
+                        req->done_count += interval.right - interval.left + 1;
+                    }
+                }
 
                 /* Check for completion and complete the requests */
                 if(req->done_count == req->parts)
@@ -429,7 +449,9 @@ mca_part_direct_aggregated_psend_init(const void* buf,
     /* init aggregation state */
     size_t factor, remaining_partitions, parts_; // remaining_partitions and parts_ will be ignored. only aggregation factor relevant
     part_direct_aggregated_select_internal_partitioning(parts, count, &parts_, &factor, &remaining_partitions);
-    aggregation_scheme_rb_tree_init(&sendreq->aggregation_state, factor);
+    if (factor >= 4) factor = 4;
+    aggregation_scheme_interval_tree_init(&sendreq->aggregation_state, factor);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "dynamically aggregating %lu*%lu partitioning with factor %lu\n", parts, count, factor);
 
     /* init partition interval queue */
     opal_ring_buffer_init(&sendreq->available_intervals, req->parts);
@@ -499,12 +521,14 @@ mca_part_direct_aggregated_start(size_t count, ompi_request_t** requests)
         req->tround++;
         if(MCA_PART_DIRECT_AGGREGATED_REQUEST_PSEND == req->req_type) {
             req->done_count = 0;
+            req->mark_count = 0;
             // req->available_count = 0;
 
             mca_part_direct_aggregated_psend_request_t *sendreq = (mca_part_direct_aggregated_psend_request_t *) req;
-            aggregation_scheme_rb_tree_reset(&sendreq->aggregation_state);
+            aggregation_scheme_interval_tree_reset(&sendreq->aggregation_state);
         } else {
             req->done_count = 0;
+            req->mark_count = 0;
 	        // /* Increment round on sender */
 	        // MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
 	        // MPI_Win_flush(0,req->window_flags);
@@ -531,8 +555,10 @@ mca_part_direct_aggregated_pready(size_t min_part,
     mca_part_direct_aggregated_request_t *req = (mca_part_direct_aggregated_request_t *)(request);
     mca_part_direct_aggregated_psend_request_t *sendreq = (mca_part_direct_aggregated_psend_request_t *) req;
 
+    opal_atomic_add_fetch_size_t(&req->mark_count, max_part - min_part + 1);
+
     int left, right;
-    int extracted = aggregation_scheme_rb_tree_pready_range(&sendreq->aggregation_state, min_part, max_part, &left, &right);
+    int extracted = aggregation_scheme_interval_tree_pready_range(&sendreq->aggregation_state, min_part, max_part, &left, &right);
 
     if (extracted)
     {   // interval ready to transfer
