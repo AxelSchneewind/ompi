@@ -176,15 +176,15 @@ mca_part_direct_aggregated_progress(void)
                     struct partition_interval interval;
                     interval.as_ptr = val;
 
-                    size_t count = (interval.end - interval.begin + 1);
-                    // printf("calling Put for partitions %i to %i (%lx)\n", interval.begin, interval.end, interval.as_ptr);
-                    err = MPI_Put(req->buf + interval.begin * req->part_bytes, count * req->part_bytes, 
+                    size_t count = (interval.right - interval.left + 1);
+                    // printf("calling Put for partitions %i to %i (%lx)\n", interval.left, interval.right, interval.as_ptr);
+                    err = MPI_Put(req->buf + interval.left * req->part_bytes, count * req->part_bytes, 
                                   MPI_CHAR, 1,
-                                  interval.begin * req->part_bytes, count * req->part_bytes, 
+                                  interval.left * req->part_bytes, count * req->part_bytes, 
                                   MPI_CHAR, req->window);
                     assert(MPI_SUCCESS == err);
 
-                    req->done_count += interval.end - interval.begin + 1;
+                    req->done_count += interval.right - interval.left + 1;
                 }
 
                 int mark_count = opal_atomic_fetch_add_size_t(&req->mark_count, 0);
@@ -562,7 +562,7 @@ mca_part_direct_aggregated_pready(size_t min_part,
 
     if (extracted)
     {   // interval ready to transfer
-        struct partition_interval interval = { .begin = left, .end = right };
+        struct partition_interval interval = { .left = left, .right = right };
         opal_ring_buffer_push(&sendreq->available_intervals, interval.as_ptr);
     }
 

@@ -38,7 +38,7 @@ struct
 partition_interval 
 { 
     union { 
-        struct { int begin; int end; } __attribute__((__packed__)) __attribute__((__aligned__));
+        struct { int left; int right; } __attribute__((__packed__)) __attribute__((__aligned__));
         struct { void* as_ptr; } __attribute__((__packed__)) __attribute__((__aligned__)); 
     };
 };
