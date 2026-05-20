@@ -17,10 +17,9 @@
 // comparator for intervals: -1 if interval2 is left of interval1, 1 if interval2 right of interval1 and 0 if interval2 contained in interval1
 static int interval_comp(interval_state_t* interval1, interval_state_t* interval2)
 {
-    int left  = interval2->left <= interval1->left;
-    int right = interval2->right >= interval1->right;
-    int contained = left && right;
-    return contained ? 0 : (left ? -1 : 1);
+    if (interval2->left >= interval1->right) return 1;
+    if (interval2->right <= interval1->left) return -1;
+    return 0;
 }
 
 opal_rb_tree_comp_fn_t interval_comp_fn = (opal_rb_tree_comp_fn_t) interval_comp;
@@ -63,11 +62,12 @@ int aggregation_scheme_rb_tree_pready_range(struct part_persist_aggregation_stat
     if (NULL == left && NULL == right) // no adjacent interval
     {
         // new interval state object
-        state->interval_states[state->interval_count].left  = min;
-        state->interval_states[state->interval_count].right = max;
+        size_t index = opal_atomic_add_fetch_size_t(&state->interval_count, 1);
+        state->interval_states[index].left  = min;
+        state->interval_states[index].right = max;
+        state->interval_states[index].consumed = false;
 
-        opal_rb_tree_insert(&state->intervals, &state->interval_states[state->interval_count], &state->interval_states[state->interval_count]);
-        state->interval_count++;
+        opal_rb_tree_insert(&state->intervals, &state->interval_states[index], &state->interval_states[index]);
         return 0;
     }
     else if (NULL != left && !left->consumed && NULL != right && !right->consumed) // intervals can be merged
@@ -75,54 +75,71 @@ int aggregation_scheme_rb_tree_pready_range(struct part_persist_aggregation_stat
         opal_rb_tree_delete(&state->intervals, &left);
         opal_rb_tree_delete(&state->intervals, &right);
 
+        // grow left interval
+        left->right = max;
+        opal_rb_tree_insert(&state->intervals, &left, &left);
+
         if (right->right - left->left >= state->factor)
         {
             // large enough to extract
+            left->consumed = true;
             *available_partitions_first = left->left;
             *available_partitions_last  = right->right;
             return 1;
         }
-        else 
-        {
-            // reinsert as one interval
-            opal_rb_tree_insert(&state->intervals, &left, &left);
-            return 0;
-        }
+        
+        return 0;
     }
     else if (NULL != left && !left->consumed) // left interval can be extended
     {
         opal_rb_tree_delete(&state->intervals, &left);
 
+        // grow left interval
+        left->right = max;
+        opal_rb_tree_insert(&state->intervals, &left, &left);
+
         if (max + 1 - left->left >= state->factor)
         {
             *available_partitions_first = left->left;
             *available_partitions_last  = max;
+            left->consumed = true;
             return 1;
         }
-        else 
-        {
-            // grow and reinsert
-            left->right = max;
-            opal_rb_tree_insert(&state->intervals, &left, &left);
-            return 0;
-        }
+        
+        return 0;
     }
     else if (NULL != right && !right->consumed) // right interval can be extended
     {
+        opal_rb_tree_delete(&state->intervals, &right);
+
+        // grow left interval
+        right->left = min;
+        opal_rb_tree_insert(&state->intervals, &right, &right);
 
         if (right->right + 1 - min >= state->factor)
         {
+            right->consumed = true;
             *available_partitions_first = min;
             *available_partitions_last  = right->right;
             return 1;
         }
-        else 
-        {
-            // grow and reinsert
-            right->left = min;
-            opal_rb_tree_insert(&state->intervals, &right, &right);
-            return 0;
-        }
+        
+        return 0;
+    }
+    else 
+    {
+        // new interval state object
+        size_t index = opal_atomic_add_fetch_size_t(&state->interval_count, 1);
+        state->interval_states[index].left  = min;
+        state->interval_states[index].right = max;
+        state->interval_states[index].consumed = true;
+
+        opal_rb_tree_insert(&state->intervals, &state->interval_states[index], &state->interval_states[index]);
+
+        *available_partitions_first = min;
+        *available_partitions_last  = max;
+
+        return 1;
     }
 }
 
