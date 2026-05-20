@@ -46,7 +46,7 @@ struct part_persist_aggregation_state_it {
     // 
     // opal_list_t          interval_states;
     interval_state_t    *interval_states;
-    int interval_count;
+    opal_atomic_int32_t interval_count;
 
     // parameters for message aggregation
     int factor; // how many public partitions have to be aggregated into an internal one
