@@ -84,11 +84,11 @@ int aggregation_scheme_interval_tree_pready_range(struct part_persist_aggregatio
         left->right = max;
         opal_interval_tree_insert(&state->intervals, left, left->left, left->right);
 
-        if (max + 1 - left->left >= state->factor)
+        if (left->right - left->left >= state->factor)
         {
-            left->consumed = true;
             *available_partitions_first = left->left;
-            *available_partitions_last  = max;
+            *available_partitions_last  = left->right;
+            left->consumed = true;
             return 1;
         }
 
@@ -102,17 +102,17 @@ int aggregation_scheme_interval_tree_pready_range(struct part_persist_aggregatio
         right->left = min;
         opal_interval_tree_insert(&state->intervals, right, right->left, right->right);
 
-        if (right->right + 1 - min >= state->factor)
+        if (right->right - right->left >= state->factor)
         {
-            right->consumed = true;
-            *available_partitions_first = min;
+            *available_partitions_first = right->left;
             *available_partitions_last  = right->right;
+            right->consumed = true;
             return 1;
         }
         
         return 0;
     }
-    else // cannot merge, just return interval
+    else // cannot merge and also not grow, so just store and return interval
     {
         // new interval state object
         int index = opal_atomic_add_fetch_32(&state->interval_count, 1) % 1024;
