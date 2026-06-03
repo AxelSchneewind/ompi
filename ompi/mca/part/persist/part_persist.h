@@ -501,7 +501,7 @@ mca_part_persist_psend_init(const void* buf,
 
     aggregation_scheme_regular_select_internal_partitioning(parts, factor, &req->real_parts, &factor_last);
 
-    aggregation_scheme_regular_psend_init(&req->aggregation_state, req->real_parts, factor, factor_last);
+    aggregation_scheme_regular_init(&req->aggregation_state, req->real_parts, factor, factor_last);
 
     req->real_count_last = factor_last * count;     // convert to number of elements
     req->real_count = factor * count;
@@ -605,9 +605,9 @@ mca_part_persist_pready(size_t min_part,
 
 
     // queue or start available internal partitions
-    int internal_part_ready;
+    int first_internal_part_ready, last_internal_part_ready;
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        aggregation_scheme_regular_pready(&req->aggregation_state, i, &internal_part_ready);
+        aggregation_scheme_dynamic_pready(&req->aggregation_state, i, &first_internal_part_ready, &last_internal_part_ready);
 
         if (-1 != internal_part_ready) {
             if(true == req->initialized) {
