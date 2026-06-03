@@ -447,9 +447,9 @@ mca_part_direct_aggregated_psend_init(const void* buf,
     req->tround = 0;
 
     /* init aggregation state */
-    size_t factor, remaining_partitions, parts_; // remaining_partitions and parts_ will be ignored. only aggregation factor relevant
-    part_direct_aggregated_select_internal_partitioning(parts, count, &parts_, &factor, &remaining_partitions);
-    if (factor >= 4) factor = 4;
+    size_t factor;
+    aggregation_schemes_select_factor(parts, count, ompi_part_direct_aggregated.max_message_count, ompi_part_direct_aggregated.min_message_size, &factor);
+
     aggregation_scheme_interval_tree_init(&sendreq->aggregation_state, factor);
     opal_output_verbose(5, ompi_part_base_framework.framework_output, "dynamically aggregating %lu*%lu partitioning with factor %lu\n", parts, count, factor);
 
