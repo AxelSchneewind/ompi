@@ -14,7 +14,7 @@
 
 #include <stdlib.h>
 
-void aggregation_scheme_interval_tree_init(struct part_persist_aggregation_state_it *state, int factor)
+void aggregation_scheme_interval_tree_init(struct part_persist_interval_tree_aggregation_state_t *state, int factor)
 {
     // number of user-partitions per internal partition (except for the last one)
     state->factor = factor;
@@ -29,7 +29,7 @@ void aggregation_scheme_interval_tree_init(struct part_persist_aggregation_state
     opal_interval_tree_init(&state->intervals);
 }
 
-void aggregation_scheme_interval_tree_reset(struct part_persist_aggregation_state_it *state)
+void aggregation_scheme_interval_tree_reset(struct part_persist_interval_tree_aggregation_state_t *state)
 {
     opal_atomic_swap_32(&state->interval_count, 0);
 
@@ -37,7 +37,7 @@ void aggregation_scheme_interval_tree_reset(struct part_persist_aggregation_stat
     opal_interval_tree_init(&state->intervals);
 }
 
-int aggregation_scheme_interval_tree_pready_range(struct part_persist_aggregation_state_it *state,
+int aggregation_scheme_interval_tree_pready_range(struct part_persist_interval_tree_aggregation_state_t *state,
                                                 int min, int max, 
                                                 int* available_partitions_first, int* available_partitions_last)
 {
@@ -128,13 +128,13 @@ int aggregation_scheme_interval_tree_pready_range(struct part_persist_aggregatio
     }
 }
 
-int aggregation_scheme_interval_tree_pready(struct part_persist_aggregation_state_it *state, int partition, int* available_partitions_left, int* available_partitions_right)
+int aggregation_scheme_interval_tree_pready(struct part_persist_interval_tree_aggregation_state_t *state, int partition, int* available_partitions_left, int* available_partitions_right)
 {
     return aggregation_scheme_interval_tree_pready_range(state, partition, partition, available_partitions_left, available_partitions_right);
 }
 
 // reuse interval_state list as list of remaining intervals
-void aggregation_scheme_interval_tree_remaining(struct part_persist_aggregation_state_it *state, interval_state_t** remaining, size_t* remaining_count)
+void aggregation_scheme_interval_tree_remaining(struct part_persist_interval_tree_aggregation_state_t *state, interval_state_t** remaining, size_t* remaining_count)
 {
     int count = state->interval_count;
     for (int i = 0; i < count; )
@@ -154,7 +154,7 @@ void aggregation_scheme_interval_tree_remaining(struct part_persist_aggregation_
     *remaining_count = count;
 }
 
-void aggregation_scheme_interval_tree_free(struct part_persist_aggregation_state_it *state)
+void aggregation_scheme_interval_tree_free(struct part_persist_interval_tree_aggregation_state_t *state)
 {
     if (state->interval_states != NULL)
         free((void*)state->interval_states);

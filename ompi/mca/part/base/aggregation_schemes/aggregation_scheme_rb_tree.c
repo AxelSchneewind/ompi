@@ -25,7 +25,7 @@ static int interval_comp(interval_state_t* interval1, interval_state_t* interval
 opal_rb_tree_comp_fn_t interval_comp_fn = (opal_rb_tree_comp_fn_t) interval_comp;
 
 
-void aggregation_scheme_rb_tree_init(struct part_persist_aggregation_state_it *state, int factor)
+void aggregation_scheme_rb_tree_init(struct part_persist_rb_tree_aggregation_state_t *state, int factor)
 {
     // number of user-partitions per internal partition (except for the last one)
     state->factor = factor;
@@ -40,7 +40,7 @@ void aggregation_scheme_rb_tree_init(struct part_persist_aggregation_state_it *s
     opal_rb_tree_init(&state->intervals, interval_comp_fn);
 }
 
-void aggregation_scheme_rb_tree_reset(struct part_persist_aggregation_state_it *state)
+void aggregation_scheme_rb_tree_reset(struct part_persist_rb_tree_aggregation_state_t *state)
 {
     state->interval_count = 0;
 
@@ -48,7 +48,7 @@ void aggregation_scheme_rb_tree_reset(struct part_persist_aggregation_state_it *
     opal_rb_tree_init(&state->intervals, interval_comp_fn);
 }
 
-int aggregation_scheme_rb_tree_pready_range(struct part_persist_aggregation_state_it *state,
+int aggregation_scheme_rb_tree_pready_range(struct part_persist_rb_tree_aggregation_state_t *state,
                                             int min, int max, 
                                             int* available_partitions_first, int* available_partitions_last)
 {
@@ -143,13 +143,13 @@ int aggregation_scheme_rb_tree_pready_range(struct part_persist_aggregation_stat
     }
 }
 
-int aggregation_scheme_rb_tree_pready(struct part_persist_aggregation_state_it *state, int partition, int* available_partitions_left, int* available_partitions_right)
+int aggregation_scheme_rb_tree_pready(struct part_persist_rb_tree_aggregation_state_t *state, int partition, int* available_partitions_left, int* available_partitions_right)
 {
     return aggregation_scheme_rb_tree_pready_range(state, partition, partition, available_partitions_left, available_partitions_right);
 }
 
 // reuse interval_state list as list of remaining intervals
-void aggregation_scheme_rb_tree_remaining(struct part_persist_aggregation_state_it *state, interval_state_t** remaining, size_t* remaining_count)
+void aggregation_scheme_rb_tree_remaining(struct part_persist_rb_tree_aggregation_state_t *state, interval_state_t** remaining, size_t* remaining_count)
 {
     int count = state->interval_count;
     for (int i = 0; i < count; i++)
@@ -167,7 +167,7 @@ void aggregation_scheme_rb_tree_remaining(struct part_persist_aggregation_state_
     *remaining_count = count;
 }
 
-void aggregation_scheme_rb_tree_free(struct part_persist_aggregation_state_it *state)
+void aggregation_scheme_rb_tree_free(struct part_persist_rb_tree_aggregation_state_t *state)
 {
     if (state->interval_states != NULL)
         free((void*)state->interval_states);

@@ -36,7 +36,7 @@ typedef struct interval_state_t interval_state_t;
  * @brief tracks the number of pready calls corresponding to internal partitions
  *
  */
-struct part_persist_aggregation_state_it {
+struct part_persist_rb_tree_aggregation_state_t {
     // intervals of marked partitions
     opal_rb_tree_t intervals;
 
@@ -55,7 +55,7 @@ struct part_persist_aggregation_state_it {
  * @param[out] state                        pointer to aggregation state object
  * @param[in] factor                        number of public partitions corresponding to each internal one other than the last
  */
-OMPI_DECLSPEC void aggregation_scheme_rb_tree_init(struct part_persist_aggregation_state_it *state, int factor);
+OMPI_DECLSPEC void aggregation_scheme_rb_tree_init(struct part_persist_rb_tree_aggregation_state_t *state, int factor);
 
 /**
  * @brief resets the aggregation state
@@ -63,7 +63,7 @@ OMPI_DECLSPEC void aggregation_scheme_rb_tree_init(struct part_persist_aggregati
  * @param[out] state                pointer to aggregation state object
  */
 OMPI_DECLSPEC void
-aggregation_scheme_rb_tree_reset(struct part_persist_aggregation_state_it *state);
+aggregation_scheme_rb_tree_reset(struct part_persist_rb_tree_aggregation_state_t *state);
 
 /**
  * @brief marks a public partition as ready
@@ -74,7 +74,7 @@ aggregation_scheme_rb_tree_reset(struct part_persist_aggregation_state_it *state
  * @param[out] available_partition_last  right index of an interval of available partitions (inclusive)
  * @returns 1 if there is an interval of available partitions, otherwise 0
  */
-OMPI_DECLSPEC int aggregation_scheme_rb_tree_pready(struct part_persist_aggregation_state_it *state,
+OMPI_DECLSPEC int aggregation_scheme_rb_tree_pready(struct part_persist_rb_tree_aggregation_state_t *state,
                                                     int partition, int* available_partitions_first, int* available_partitions_last);
 
 
@@ -88,7 +88,7 @@ OMPI_DECLSPEC int aggregation_scheme_rb_tree_pready(struct part_persist_aggregat
  * @param[in,out] available_partition_last  right index of an interval of available partitions (inclusive)
  * @returns 1 if there is an interval of available partitions, otherwise 0
  */
-OMPI_DECLSPEC int aggregation_scheme_rb_tree_pready_range(struct part_persist_aggregation_state_it *state,
+OMPI_DECLSPEC int aggregation_scheme_rb_tree_pready_range(struct part_persist_rb_tree_aggregation_state_t *state,
                                                           int min, int max, 
                                                           int* available_partitions_first, int* available_partitions_last);
                                                     
@@ -99,14 +99,14 @@ OMPI_DECLSPEC int aggregation_scheme_rb_tree_pready_range(struct part_persist_ag
  * @param[out] remaining            pointer to the interval_state objects of remaining intervals
  * @param[out] remaining_count      number of remaining intervals
  */
-OPAL_DECLSPEC void aggregation_scheme_rb_tree_remaining(struct part_persist_aggregation_state_it *state, interval_state_t **remaining, size_t *remaining_count);
+OPAL_DECLSPEC void aggregation_scheme_rb_tree_remaining(struct part_persist_rb_tree_aggregation_state_t *state, interval_state_t **remaining, size_t *remaining_count);
 
 /**
  * @brief destroys the aggregation scheme
  *
  * @param[in,out] state             pointer to aggregation state object
  */
-OMPI_DECLSPEC void aggregation_scheme_rb_tree_free(struct part_persist_aggregation_state_it *state);
+OMPI_DECLSPEC void aggregation_scheme_rb_tree_free(struct part_persist_rb_tree_aggregation_state_t *state);
 
 
 #endif
