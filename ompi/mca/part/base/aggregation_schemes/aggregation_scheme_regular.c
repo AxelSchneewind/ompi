@@ -15,6 +15,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, size_t factor, size_t* internal_partitions, size_t* remainder) {
+    size_t _internal_partitions, _remainder;
+
+    _internal_partitions = (partitions + factor - 1) / factor;
+    _remainder = partitions % factor;
+
+    if (0 == _remainder) { // we still need the size of the last partition
+        _remainder = factor;
+    }
+
+    *internal_partitions = _internal_partitions;
+    *remainder = _remainder;
+}
+
 // converts the index of a public partition to the index of its corresponding internal partition
 static inline int internal_partition(struct part_persist_aggregation_state *state, int public_part)
 {

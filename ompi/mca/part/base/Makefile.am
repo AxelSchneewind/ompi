@@ -12,10 +12,12 @@ headers += \
         base/part_base_prequest.h \
         base/part_base_precvreq.h \
         base/part_base_psendreq.h \
-        base/aggregation_schemes/aggregation_scheme_regular.h
+        base/aggregation_schemes/aggregation_scheme_regular.h \
+        base/aggregation_schemes/select_aggregation_factor.h 
 
 libmca_part_la_SOURCES += \
         base/aggregation_schemes/aggregation_scheme_regular.c \
+        base/aggregation_schemes/select_aggregation_factor.c \
         base/part_base_frame.c \
         base/part_base_precvreq.c \
         base/part_base_prequest.c \

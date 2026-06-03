@@ -45,6 +45,19 @@ struct part_persist_aggregation_state {
 };
 
 /**
+ * @brief selects an internal partitioning based on the user-provided partitioning
+ * and the selected aggregation factor.
+ *
+ * More precisely, ensures that: (internal_partitions - 1) * factor + remainder == partitions
+ * 
+ * @param (IN)  partitions           number of user-provided partitions
+ * @param (IN)  factor               number of public partitions corresponding to each internal partitions other than the last one
+ * @param (OUT) internal_partitions  number of internal partitions
+ * @param (OUT) remainder            number of public partitions corresponding to the last internal partition
+ */
+void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, size_t factor, size_t* internal_partitions, size_t* remainder);
+
+/**
  * @brief initializes the aggregation state for the sending side
  *
  * @param[out] state                        pointer to aggregation state object
