@@ -45,6 +45,11 @@
 #include "ompi/mca/part/direct_aggregated/part_direct_aggregated_sendreq.h"
 #include "ompi/message/message.h"
 #include "ompi/mca/pml/pml.h"
+
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_interval_tree.h"
+
+#include "ompi/mca/part/base/aggregation_schemes/select_aggregation_factor.h"
+
 BEGIN_C_DECLS
 
 typedef struct mca_part_direct_aggregated_list_t {
@@ -193,7 +198,7 @@ mca_part_direct_aggregated_progress(void)
                     // put remaining
                     interval_state_t* remaining;
                     size_t remaining_count;
-                    aggregation_scheme_interval_tree_remaining(&sendreq->aggregation_state, &remaining, &remaining_count);
+                    aggregation_scheme_dynamic_remaining(&sendreq->aggregation_state, (void**)&remaining, &remaining_count);
 
                     for (size_t r = 0; r < remaining_count; r++)
                     {
@@ -450,7 +455,7 @@ mca_part_direct_aggregated_psend_init(const void* buf,
     size_t factor;
     aggregation_schemes_select_factor(parts, count, ompi_part_direct_aggregated.max_message_count, ompi_part_direct_aggregated.min_message_size, &factor);
 
-    aggregation_scheme_interval_tree_init(&sendreq->aggregation_state, factor);
+    aggregation_scheme_dynamic_init(&sendreq->aggregation_state, INTERVAL_TREE, factor);
     opal_output_verbose(5, ompi_part_base_framework.framework_output, "dynamically aggregating %lu*%lu partitioning with factor %lu\n", parts, count, factor);
 
     /* init partition interval queue */
@@ -525,7 +530,7 @@ mca_part_direct_aggregated_start(size_t count, ompi_request_t** requests)
             // req->available_count = 0;
 
             mca_part_direct_aggregated_psend_request_t *sendreq = (mca_part_direct_aggregated_psend_request_t *) req;
-            aggregation_scheme_interval_tree_reset(&sendreq->aggregation_state);
+            aggregation_scheme_dynamic_reset(&sendreq->aggregation_state);
         } else {
             req->done_count = 0;
             req->mark_count = 0;
@@ -558,9 +563,9 @@ mca_part_direct_aggregated_pready(size_t min_part,
     opal_atomic_add_fetch_size_t(&req->mark_count, max_part - min_part + 1);
 
     int left, right;
-    int extracted = aggregation_scheme_interval_tree_pready_range(&sendreq->aggregation_state, min_part, max_part, &left, &right);
+    aggregation_scheme_dynamic_pready_range(&sendreq->aggregation_state, min_part, max_part, &left, &right);
 
-    if (extracted)
+    if (left <= right)
     {   // interval ready to transfer
         struct partition_interval interval = { .left = left, .right = right };
         opal_ring_buffer_push(&sendreq->available_intervals, interval.as_ptr);

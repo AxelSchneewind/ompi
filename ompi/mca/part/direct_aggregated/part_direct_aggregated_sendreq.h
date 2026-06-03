@@ -26,7 +26,7 @@
 #ifndef PART_DIRECT_AGGREGATED_PSENDREQ_H
 #define PART_DIRECT_AGGREGATED_PSENDREQ_H
 
-#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_interval_tree.h"
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_dynamic.h"
  
 #include "ompi/mca/part/direct_aggregated/part_direct_aggregated_request.h"
 #include "ompi/mca/part/base/part_base_psendreq.h"
@@ -49,7 +49,7 @@ struct mca_part_direct_aggregated_psend_request_t {
     // intervals to transfer
     opal_ring_buffer_t available_intervals;
 
-    struct part_persist_aggregation_state_it aggregation_state;
+    struct part_persist_aggregation_state_t aggregation_state;
 };
 typedef struct mca_part_direct_aggregated_psend_request_t mca_part_direct_aggregated_psend_request_t;
 OBJ_CLASS_DECLARATION(mca_part_direct_aggregated_psend_request_t);
