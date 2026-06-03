@@ -69,12 +69,13 @@ void aggregation_scheme_regular_reset(struct part_persist_aggregation_state *sta
 /**
  * @brief marks a public partition as ready
  *
- * @param[in,out] state             pointer to aggregation state object
- * @param[in] partition             index of the public partition to mark ready
- * @param[out] available_partition  index of the internal partition if it is ready, otherwise -1
+ * @param[in,out] state                pointer to aggregation state object
+ * @param[in] partition                index of the public partition to mark ready
+ * @param[out] available_partition_min index of the first internal partition 
+ * @param[out] available_partition_max index of the last internal partition 
  */
 void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *state,
-                                       int partition, int* available_partition);
+                                       int partition, int* available_partition_min, int* available_partition_max);
 
 /**
  * @brief 

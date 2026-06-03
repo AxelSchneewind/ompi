@@ -53,7 +53,7 @@ static inline int num_public_parts(struct part_persist_aggregation_state *state,
     return is_last_partition(state, partition) ? state->last_internal_partition_size : state->factor;
 }
 
-void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *state, int partition, int* available_partition)
+void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *state, int partition, int* available_partition_min, int* available_partition_max)
 {
     int internal_part = internal_partition(state, partition);
     int corresponding_public_parts = num_public_parts(state, internal_part);
@@ -63,9 +63,11 @@ void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *st
 
     // output internal partition if ready
     if (count == corresponding_public_parts) {
-        *available_partition = internal_part;
+        *available_partition_min = internal_part;
+        *available_partition_max = internal_part;
     } else {
-        *available_partition = -1;
+        *available_partition_min = 0;
+        *available_partition_max = -1;
     }
 }
 
