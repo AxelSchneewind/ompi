@@ -45,6 +45,29 @@ struct part_persist_aggregation_state {
 };
 
 /**
+ * @brief selects an internal partitioning based on the user-provided partitioning
+ * and the given aggregation factor.
+ * 
+ * public partitioning:     |----|----|----|----|----|----|----|----|
+ *                          ^ parts
+ * internal partitioning:   |--------------|--------------|---------|  
+ *                                                        ^ factor_last
+ *                          ^ (internal_parts - 1) * factor
+ * 
+ * The last internal partition corresponds to `factor_last` public ones which may be fewer 
+ * if `parts` is not divisible by `factor`.
+ * The resulting partitioning fulfills the equation 
+ *   parts = (internal_parts - 1) * factor + factor_last
+ *
+ * @param partitions (IN)            number of user-provided partitions
+ * @param factor (IN)                number of public partitions corresponding to each internal partitions other than the last one
+ * @param internal_partitions (OUT)  number of internal partitions
+ * @param internal_partitions (OUT)  number of internal partitions
+ * @param factor_last (OUT)          number of public partitions corresponding to the last internal partition
+ */
+void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, size_t factor, size_t* internal_partitions, size_t* factor_last);
+
+/**
  * @brief initializes the aggregation state for the sending side
  *
  * @param[out] state                        pointer to aggregation state object
