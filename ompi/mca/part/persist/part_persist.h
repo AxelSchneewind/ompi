@@ -48,6 +48,11 @@
 #include "ompi/mca/part/persist/part_persist_sendreq.h"
 #include "ompi/message/message.h"
 #include "ompi/mca/pml/pml.h"
+
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_regular.h"
+
+#include "ompi/mca/part/base/aggregation_schemes/select_aggregation_factor.h"
+
 BEGIN_C_DECLS
 
 typedef struct mca_part_persist_list_t {
@@ -90,80 +95,6 @@ struct ompi_part_persist_t {
 };
 typedef struct ompi_part_persist_t ompi_part_persist_t;
 extern ompi_part_persist_t ompi_part_persist;
-
-
-
-/**
- * @brief selects an internal partitioning based on the user-provided partitioning
- * and the mca-parameters for minimal partition size and maximal partition count.
- * 
- * public partitioning:     |----|----|----|----|----|----|----|----|
- *                          ^ parts * part_size
- * internal partitioning:   |--------------|--------------|---------|  
- *                                                        ^ factor_last * part_size
- *                          ^ (internal_parts - 1) * factor * part_size
- * 
- * The aggregation factor is selected such that the constraints from `min_message_size`
- * and `max_message_count` are fulfilled. The last internal partition corresponds to
- * `factor_last` public ones which may be fewer if `parts` is not divisible
- * by `factor`.
- * The resulting partitioning fulfills the equation 
- *   parts * part_size = (internal_parts - 1) * factor * part_size + factor_last * part_size
- *
- * @param partitions (IN)            number of user-provided partitions
- * @param part_size (IN)             number of bytes per user-provided partition
- * @param internal_partitions (OUT)  number of internal partitions
- * @param factor (OUT)               number of public partitions corresponding to each internal partitions other than the last one.
- *                                   Internal partitions have size factor * part_size.
- * @param factor_last (OUT)          number of public partitions corresponding to the last internal partition.
- *                                   The last internal partition therefore has size factor * part_size.
- */
-static inline void part_persist_select_internal_partitioning(size_t partitions, size_t part_size, size_t* internal_partitions, size_t* factor, size_t* factor_last) {
-    size_t buffer_size = partitions * part_size;
-    size_t min_part_size  = ompi_part_persist.min_message_size;
-    size_t max_part_count = ompi_part_persist.max_message_count;
-
-    // check if max_part_count imposes higher limit on partition size
-    if (max_part_count > 0 && (buffer_size / max_part_count) > min_part_size) {
-        min_part_size = buffer_size / max_part_count;
-    }
-
-    // cannot have partitions larger than buffer size
-    if (min_part_size > buffer_size) {
-        min_part_size = buffer_size;
-    }
-
-    size_t _internal_partitions, _factor, _factor_last;
-
-    if (part_size < min_part_size) {
-        // partition size too small, compute coarser partitioning
-        // compute factor by ceiled division, ensures that part_size * factor >= min_part_size
-        _factor = (min_part_size + part_size - 1) / part_size;
-        if (_factor > partitions) _factor = partitions;
-
-        // division with remainder, _internal_partitions is floored and _factor_last may be 0
-        _internal_partitions = partitions / _factor;
-        _factor_last = partitions % _factor;
-
-        // ensure that last partition is nonempty and included in internal_parts
-        if (0 == _factor_last) { 
-            // last partition has same size as the others
-            _factor_last = _factor;
-        } else { 
-            // _internal_partitions was floored, add one for the last partition
-            _internal_partitions += 1;
-        }
-    } else {    
-        // can keep original partitioning
-        _internal_partitions = partitions;
-        _factor = 1;
-        _factor_last = 1;
-    }
-
-    *internal_partitions = _internal_partitions;
-    *factor = _factor;
-    *factor_last = _factor_last;
-}
 
 
 /**
@@ -566,7 +497,9 @@ mca_part_persist_psend_init(const void* buf,
 
     /* select internal partitioning (i.e. real_parts) here */
     size_t factor, factor_last;
-    part_persist_select_internal_partitioning(parts, count * dt_size, &req->real_parts, &factor, &factor_last);
+    aggregation_schemes_select_factor(parts, count * dt_size, ompi_part_persist.max_message_count, ompi_part_persist.min_message_size, &factor);
+
+    aggregation_scheme_regular_select_internal_partitioning(parts, factor, &req->real_parts, &factor_last);
 
     aggregation_scheme_regular_psend_init(&req->aggregation_state, req->real_parts, factor, factor_last);
 
