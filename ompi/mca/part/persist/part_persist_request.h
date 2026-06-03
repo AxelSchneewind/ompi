@@ -23,7 +23,7 @@
 #ifndef PART_PERSIST_REQUEST_H
 #define PART_PERSIST_REQUEST_H
 
-#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_regular.h"
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_dynamic.h"
 
 #include "ompi/mca/part/base/part_base_psendreq.h"
 #include "ompi/mca/part/part.h"
@@ -104,7 +104,7 @@ struct mca_part_persist_request_t {
   
     struct mca_part_persist_list_t* progress_elem; /**< pointer to progress list element for removal during free. */ 
 
-    struct part_persist_aggregation_state aggregation_state;
+    struct part_persist_aggregation_state_t aggregation_state;
 };
 typedef struct mca_part_persist_request_t mca_part_persist_request_t;
 OBJ_CLASS_DECLARATION(mca_part_persist_request_t);

@@ -48,7 +48,7 @@
 #include "ompi/message/message.h"
 #include "ompi/mca/pml/pml.h"
 
-#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_regular.h"
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_dynamic.h"
 
 #include "ompi/mca/part/base/aggregation_schemes/select_aggregation_factor.h"
 
@@ -144,7 +144,7 @@ mca_part_persist_free_req(struct mca_part_persist_request_t* req)
     OBJ_RELEASE(req->progress_elem);
 
     if(MCA_PART_PERSIST_REQUEST_PSEND == req->req_type) {
-        aggregation_scheme_regular_free(&req->aggregation_state);
+        aggregation_scheme_dynamic_free(&req->aggregation_state);
     }
 
     for(i = 0; i < req->real_parts; i++) {
@@ -516,7 +516,7 @@ mca_part_persist_psend_init(const void* buf,
 
     part_persist_select_internal_partitioning(parts, count, factor, &req->real_parts, &remaining_partitions);
 
-    aggregation_scheme_regular_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
+    aggregation_scheme_dynamic_init(&req->aggregation_state, REGULAR, req->real_parts, factor, remaining_partitions);
 
     req->real_count_last = remaining_partitions * count;     // convert to number of elements
     req->real_count = factor * count;
@@ -573,7 +573,7 @@ mca_part_persist_start(size_t count, ompi_request_t** requests)
         mca_part_persist_request_t *req = (mca_part_persist_request_t *)(requests[i]);
 
         if(MCA_PART_PERSIST_REQUEST_PSEND == req->req_type) {
-            aggregation_scheme_regular_reset(&req->aggregation_state);
+            aggregation_scheme_dynamic_reset(&req->aggregation_state);
         }
 
         /* First use is a special case, to support lazy initialization */
@@ -622,7 +622,7 @@ mca_part_persist_pready(size_t min_part,
     // queue or start available internal partitions
     int first_internal_part_ready, last_internal_part_ready;
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        aggregation_scheme_regular_pready(&req->aggregation_state, i, &first_internal_part_ready, &last_internal_part_ready);
+        aggregation_scheme_dynamic_pready(&req->aggregation_state, i, &first_internal_part_ready, &last_internal_part_ready);
 
         if (first_internal_part_ready <= last_internal_part_ready) {
             // protect the following from being called concurrently with opal_progress
