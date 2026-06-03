@@ -501,7 +501,7 @@ mca_part_persist_psend_init(const void* buf,
 
     aggregation_scheme_regular_select_internal_partitioning(parts, factor, &req->real_parts, &remaining_partitions);
 
-    aggregation_scheme_regular_psend_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
+    aggregation_scheme_regular_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
 
     req->real_count_last = remaining_partitions * count;     // convert to number of elements
     req->real_count = factor * count;
@@ -605,17 +605,22 @@ mca_part_persist_pready(size_t min_part,
 
 
     // queue or start available internal partitions
-    int internal_part_ready;
+    int first_internal_part_ready, last_internal_part_ready;
     for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        aggregation_scheme_regular_pready(&req->aggregation_state, i, &internal_part_ready);
+        aggregation_scheme_dynamic_pready(&req->aggregation_state, i, &first_internal_part_ready, &last_internal_part_ready);
 
-        if (-1 != internal_part_ready) {
-            if(true == req->initialized) {
-                err = req->persist_reqs[internal_part_ready]->req_start(1, (&(req->persist_reqs[internal_part_ready])));
-                req->flags[internal_part_ready] = 0;     /* Mark partition as ready for testing */
+        if (first_internal_part_ready <= last_internal_part_ready) {
+            // protect the following from being called concurrently with opal_progress
+            OPAL_THREAD_LOCK(&ompi_part_persist.lock);
 
-            } else {
-                req->flags[internal_part_ready] = -2;    /* Mark partition as queued */
+            for (size_t internal_part_ready = first_internal_part_ready; internal_part_ready <= last_internal_part_ready; internal_part_ready++)
+            {
+                if(true == req->initialized) {
+                    err = req->persist_reqs[internal_part_ready]->req_start(1, (&(req->persist_reqs[internal_part_ready])));
+                    req->flags[internal_part_ready] = 0;     /* Mark partition as ready for testing */
+                } else {
+                    req->flags[internal_part_ready] = -2;    /* Mark partition as queued */
+                }
             }
         }
     }

@@ -31,12 +31,12 @@ void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, 
 }
 
 // converts the index of a public partition to the index of its corresponding internal partition
-static inline int internal_partition(struct part_persist_aggregation_state *state, int public_part)
+static inline int internal_partition(struct part_persist_regular_aggregation_state_t *state, int public_part)
 {
     return public_part / state->factor;
 }
 
-void aggregation_scheme_regular_psend_init(struct part_persist_aggregation_state *state,
+void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state,
                                         int internal_partition_count, int factor, int last_internal_partition_size)
 {
     state->public_partition_count = (internal_partition_count - 1) * factor + last_internal_partition_size;
@@ -52,7 +52,7 @@ void aggregation_scheme_regular_psend_init(struct part_persist_aggregation_state
                                                                  sizeof(opal_atomic_uint32_t));
 }
 
-void aggregation_scheme_regular_reset(struct part_persist_aggregation_state *state)
+void aggregation_scheme_regular_reset(struct part_persist_regular_aggregation_state_t *state)
 {
     // reset flags
     if (NULL != state->public_parts_ready) {
@@ -60,15 +60,15 @@ void aggregation_scheme_regular_reset(struct part_persist_aggregation_state *sta
     }
 }
 
-static inline int is_last_partition(struct part_persist_aggregation_state *state, int partition) {
+static inline int is_last_partition(struct part_persist_regular_aggregation_state_t *state, int partition) {
     return (partition == state->internal_partition_count - 1);
 }
 
-static inline int num_public_parts(struct part_persist_aggregation_state *state, int partition) {
+static inline int num_public_parts(struct part_persist_regular_aggregation_state_t *state, int partition) {
     return is_last_partition(state, partition) ? state->last_internal_partition_size : state->factor;
 }
 
-void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *state, int partition, int* available_partition)
+void aggregation_scheme_regular_pready(struct part_persist_regular_aggregation_state_t *state, int partition, int* available_partition_min, int* available_partition_max)
 {
     int internal_part = internal_partition(state, partition);
     int corresponding_public_parts = num_public_parts(state, internal_part);
@@ -78,19 +78,21 @@ void aggregation_scheme_regular_pready(struct part_persist_aggregation_state *st
 
     // output internal partition if ready
     if (count == corresponding_public_parts) {
-        *available_partition = internal_part;
+        *available_partition_min = internal_part;
+        *available_partition_max = internal_part;
     } else {
-        *available_partition = -1;
+        *available_partition_min = 0;
+        *available_partition_max = -1;
     }
 }
 
-int aggregation_scheme_regular_internal_part(struct part_persist_aggregation_state *state,
+int aggregation_scheme_regular_internal_part(struct part_persist_regular_aggregation_state_t *state,
                                                       int partition)
 {
     return internal_partition(state, partition);
 }
 
-void aggregation_scheme_regular_free(struct part_persist_aggregation_state *state)
+void aggregation_scheme_regular_free(struct part_persist_regular_aggregation_state_t *state)
 {
     if (NULL != state->public_parts_ready)
         free((void*)state->public_parts_ready);
