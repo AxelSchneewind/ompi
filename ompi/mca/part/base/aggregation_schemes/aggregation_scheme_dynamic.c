@@ -113,6 +113,12 @@ void aggregation_scheme_dynamic_pready_range(struct part_persist_aggregation_sta
                 some_available = 1;
             }
         }
+
+        if (!some_available)
+        {
+            *available_partition_min = 0;
+            *available_partition_max = -1;
+        }
     }
 }
 
