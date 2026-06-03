@@ -54,7 +54,7 @@ struct part_persist_regular_aggregation_state_t {
  * @param[in] last_internal_partition_size  number of public partitions corresponding to last
  * internal partition
  */
-void aggregation_scheme_regular_psend_init(struct part_persist_regular_aggregation_state_t *state,
+void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state,
                                            int internal_partition_count,
                                            int factor,
                                            int last_internal_partition_size);

@@ -21,7 +21,7 @@ static inline int internal_partition(struct part_persist_regular_aggregation_sta
     return public_part / state->factor;
 }
 
-void aggregation_scheme_regular_psend_init(struct part_persist_regular_aggregation_state_t *state,
+void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state,
                                         int internal_partition_count, int factor, int last_internal_partition_size)
 {
     state->public_partition_count = (internal_partition_count - 1) * factor + last_internal_partition_size;

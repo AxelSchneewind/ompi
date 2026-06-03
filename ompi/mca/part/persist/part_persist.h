@@ -516,7 +516,7 @@ mca_part_persist_psend_init(const void* buf,
 
     part_persist_select_internal_partitioning(parts, count, factor, &req->real_parts, &remaining_partitions);
 
-    aggregation_scheme_regular_psend_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
+    aggregation_scheme_regular_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
 
     req->real_count_last = remaining_partitions * count;     // convert to number of elements
     req->real_count = factor * count;
