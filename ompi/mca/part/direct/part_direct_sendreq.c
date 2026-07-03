@@ -30,10 +30,17 @@ static void mca_part_direct_psend_request_construct(mca_part_direct_psend_reques
     sendreq->req_base.req_ompi.req_free = mca_part_direct_free;
     sendreq->req_base.req_ompi.req_persistent = true;
     sendreq->req_base.req_ompi.req_cancel = NULL;
+
+    OBJ_CONSTRUCT(&sendreq->available_intervals, opal_ring_buffer_t);
+}
+
+static void mca_part_direct_psend_request_destruct(mca_part_direct_psend_request_t* sendreq)
+{
+    OBJ_DESTRUCT(&sendreq->available_intervals);
 }
 
 OBJ_CLASS_INSTANCE(mca_part_direct_psend_request_t,
                    mca_part_direct_request_t,
                    mca_part_direct_psend_request_construct,
-                   NULL);
+                   mca_part_direct_psend_request_destruct);
 
