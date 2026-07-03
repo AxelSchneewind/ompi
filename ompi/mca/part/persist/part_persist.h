@@ -48,6 +48,7 @@
 #include "ompi/message/message.h"
 #include "ompi/mca/pml/pml.h"
 
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_dynamic.h"
 #include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_regular.h"
 
 #include "ompi/mca/part/base/aggregation_schemes/select_aggregation_factor.h"
@@ -109,7 +110,7 @@ mca_part_persist_free_req(struct mca_part_persist_request_t* req)
     OBJ_RELEASE(req->progress_elem);
 
     if(MCA_PART_PERSIST_REQUEST_PSEND == req->req_type) {
-        aggregation_scheme_regular_free(&req->aggregation_state);
+        aggregation_scheme_dynamic_free(&req->aggregation_state);
     }
 
     /* The per-partition requests are only created once the setup handshake
@@ -496,13 +497,14 @@ mca_part_persist_psend_init(const void* buf,
     req->my_recv_tag = req->setup_info[0].setup_tag;
 
     /* select internal partitioning (i.e. real_parts) here */
-    size_t factor, remaining_partitions;
+    size_t factor;
     aggregation_schemes_select_factor(parts, count, ompi_part_persist.max_message_count, ompi_part_persist.min_message_size / dt_size, &factor);
 
-    aggregation_scheme_regular_select_internal_partitioning(parts, factor, &req->real_parts, &remaining_partitions);
+    aggregation_scheme_dynamic_init(&req->aggregation_state, REGULAR, parts, factor);
 
-    aggregation_scheme_regular_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
-
+    /* here, we only allow regular aggregation, therefore we already now how large each internal transfer is */
+    size_t remaining_partitions = ((struct part_persist_regular_aggregation_state_t*) req->aggregation_state.aggregation_state)->last_internal_partition_size;
+    req->real_parts = ((struct part_persist_regular_aggregation_state_t*) req->aggregation_state.aggregation_state)->internal_partition_count;
     req->real_count_last = remaining_partitions * count;     // convert to number of elements
     req->real_count = factor * count;
     req->setup_info[0].num_parts = req->real_parts;         // setup info has to contain internal partitioning
@@ -558,7 +560,7 @@ mca_part_persist_start(size_t count, ompi_request_t** requests)
         mca_part_persist_request_t *req = (mca_part_persist_request_t *)(requests[i]);
 
         if(MCA_PART_PERSIST_REQUEST_PSEND == req->req_type) {
-            aggregation_scheme_regular_reset(&req->aggregation_state);
+            aggregation_scheme_dynamic_reset(&req->aggregation_state);
         }
 
         /* First use is a special case, to support lazy initialization */
@@ -604,25 +606,29 @@ mca_part_persist_pready(size_t min_part,
     mca_part_persist_request_t *req = (mca_part_persist_request_t *)(request);
 
 
+    int left, right;
+    int extracted = aggregation_scheme_dynamic_pready_range(&req->aggregation_state, min_part, max_part, &left, &right);
+
+    // convert to internal partitions
+    int first_internal_part_ready = (left * req->req_count) / req->real_count;
+    int last_internal_part_ready = (right * req->req_count + req->req_count - 1) / req->real_count;
+
     // queue or start available internal partitions
-    int first_internal_part_ready, last_internal_part_ready;
-    for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        aggregation_scheme_dynamic_pready(&req->aggregation_state, i, &first_internal_part_ready, &last_internal_part_ready);
+    if (extracted) {
+        // protect the following from being called concurrently with opal_progress
+        OPAL_THREAD_LOCK(&ompi_part_persist.lock);
 
-        if (first_internal_part_ready <= last_internal_part_ready) {
-            // protect the following from being called concurrently with opal_progress
-            OPAL_THREAD_LOCK(&ompi_part_persist.lock);
-
-            for (size_t internal_part_ready = first_internal_part_ready; internal_part_ready <= last_internal_part_ready; internal_part_ready++)
-            {
-                if(true == req->initialized) {
-                    err = req->persist_reqs[internal_part_ready]->req_start(1, (&(req->persist_reqs[internal_part_ready])));
-                    req->flags[internal_part_ready] = 0;     /* Mark partition as ready for testing */
-                } else {
-                    req->flags[internal_part_ready] = -2;    /* Mark partition as queued */
-                }
+        for (size_t internal_part_ready = first_internal_part_ready; internal_part_ready <= last_internal_part_ready; internal_part_ready++)
+        {
+            if(true == req->initialized) {
+                err = req->persist_reqs[internal_part_ready]->req_start(1, (&(req->persist_reqs[internal_part_ready])));
+                req->flags[internal_part_ready] = 0;     /* Mark partition as ready for testing */
+            } else {
+                req->flags[internal_part_ready] = -2;    /* Mark partition as queued */
             }
         }
+
+        OPAL_THREAD_UNLOCK(&ompi_part_persist.lock);
     }
     
     return err;
