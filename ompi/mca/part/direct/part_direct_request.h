@@ -24,6 +24,7 @@
 #include "ompi/mca/part/base/part_base_psendreq.h"
 #include "ompi/mca/part/part.h"
 #include "opal/sys/atomic.h"
+#include "opal/class/opal_ring_buffer.h"
 /**
  * Type of request.
  */
@@ -95,7 +96,8 @@ struct mca_part_direct_request_t {
 
     int32_t world_peer;                   /**< peer's rank in MPI_COMM_WORLD */
 
-    size_t done_count;             /**< counter for the number of partitions marked ready */
+    size_t done_count;             /**< counter for the number of partitions that have been sent */
+    opal_atomic_int64_t mark_count; /**< counter for the number of partitions marked ready */
 
     int32_t *flags;               /**< array of flags to determine whether a partition has arrived */
 
