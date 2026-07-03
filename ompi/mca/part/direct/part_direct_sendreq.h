@@ -26,6 +26,8 @@
 #ifndef PART_DIRECT_PSENDREQ_H
 #define PART_DIRECT_PSENDREQ_H
 
+#include "ompi/mca/part/base/aggregation_schemes/aggregation_scheme_dynamic.h"
+ 
 #include "ompi/mca/part/direct/part_direct_request.h"
 #include "ompi/mca/part/base/part_base_psendreq.h"
 #include "ompi/mca/part/part.h"
@@ -33,6 +35,11 @@
 
 struct mca_part_direct_psend_request_t {
     mca_part_direct_request_t req_base;
+
+    // intervals to transfer
+    opal_ring_buffer_t available_intervals;
+
+    struct part_persist_aggregation_state_t aggregation_state;
 };
 typedef struct mca_part_direct_psend_request_t mca_part_direct_psend_request_t;
 OBJ_CLASS_DECLARATION(mca_part_direct_psend_request_t);

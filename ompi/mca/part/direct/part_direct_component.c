@@ -85,6 +85,32 @@ mca_part_direct_component_register(void)
                                            MCA_BASE_VAR_SCOPE_READONLY,
                                            &ompi_part_direct.free_list_inc);
 
+    // variable for aggregation algorithm
+    ompi_part_direct.algorithm = 0;
+    (void) mca_base_component_var_register(&mca_part_direct_component.partm_version, "algorithm",
+                                           "Aggregation algorithm to use (0=identity,1=regular, 2=interval-tree, 3=red-black-tree)",
+                                           MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL, 0, 0,
+                                           OPAL_INFO_LVL_9,
+                                           MCA_BASE_VAR_SCOPE_READONLY,
+                                           &ompi_part_direct.algorithm);
+
+    // variable for minimal internal partition size
+    ompi_part_direct.min_message_size = 512;
+    (void) mca_base_component_var_register(&mca_part_direct_component.partm_version, "min_message_size",
+                                           "Minimum size of transferred messages (internal partitions)",
+                                           MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL, 0, 0,
+                                           OPAL_INFO_LVL_9,
+                                           MCA_BASE_VAR_SCOPE_READONLY,
+                                           &ompi_part_direct.min_message_size);
+
+    // variable for maximal internal partition count
+    ompi_part_direct.max_message_count = 4096;
+    (void) mca_base_component_var_register(&mca_part_direct_component.partm_version, "max_message_count",
+                                           "Maximum number of transferred messages (internal partitions)",
+                                           MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL, 0, 0,
+                                           OPAL_INFO_LVL_9,
+                                           MCA_BASE_VAR_SCOPE_READONLY,
+                                           &ompi_part_direct.max_message_count);
 
     return OPAL_SUCCESS;
 }
