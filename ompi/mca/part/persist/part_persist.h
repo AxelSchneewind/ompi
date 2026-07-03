@@ -497,7 +497,7 @@ mca_part_persist_psend_init(const void* buf,
 
     /* select internal partitioning (i.e. real_parts) here */
     size_t factor, remaining_partitions;
-    aggregation_schemes_select_factor(parts, count, ompi_part_persist.max_message_count, ompi_part_persist.min_message_size, &factor);
+    aggregation_schemes_select_factor(parts, count, ompi_part_persist.max_message_count, ompi_part_persist.min_message_size / dt_size, &factor);
 
     aggregation_scheme_regular_select_internal_partitioning(parts, factor, &req->real_parts, &remaining_partitions);
 
