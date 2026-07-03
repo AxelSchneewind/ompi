@@ -32,16 +32,16 @@
  */
 struct part_persist_regular_aggregation_state_t {
     // counters for each internal partition
-    opal_atomic_uint32_t *public_parts_ready;
+    opal_atomic_int32_t *public_parts_ready;
 
+    int public_partition_count;
     int internal_partition_count;
 
     // parameters for message aggregation
+    int parts;
     int factor; // how many public partitions may be aggregated into an internal one
 
-    int public_partition_count;
-    int last_internal_partition_size; // number of public partitions corresponding to last internal
-                                      // one
+    int last_internal_partition_size; // number of public partitions corresponding to last internal one
 };
 
 /**
@@ -58,19 +58,15 @@ struct part_persist_regular_aggregation_state_t {
 void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, size_t factor, size_t* internal_partitions, size_t* remainder);
 
 /**
- * @brief initializes the aggregation state for the sending side
+ * @brief initializes the aggregation state for the sending side.
+ * Ensures that exactly ceil(parts/factor) messages are transferred.
  *
- * @param[out] state                        pointer to aggregation state object
- * @param[in] internal_partition_count      number of internal partitions (i.e. number of messages
- * per partitioned transfer)
- * @param[in] factor                        number of public partitions corresponding to each internal one other than the last
- * @param[in] last_internal_partition_size  number of public partitions corresponding to last
- * internal partition
+ * @param[out] state          pointer to aggregation state object
+ * @param[in] parts           number of public partitions 
+ * @param[in] factor          number of public partitions corresponding to each internal one (other than the last internal partition)
  */
 void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state,
-                                           int internal_partition_count,
-                                           int factor,
-                                           int last_internal_partition_size);
+                                    int parts, int factor);
 
 /**
  * @brief resets the aggregation state
@@ -83,12 +79,13 @@ void aggregation_scheme_regular_reset(struct part_persist_regular_aggregation_st
  * @brief marks a public partition as ready
  *
  * @param[in,out] state                pointer to aggregation state object
- * @param[in] partition                index of the public partition to mark ready
- * @param[out] available_partition_min index of the first internal partition 
- * @param[out] available_partition_max index of the last internal partition 
+ * @param[in] part_min                 index of the first public partition to mark ready
+ * @param[in] part_max                 index of the last  public partition to mark ready
+ * @param[out] available_partition_min index of the first public partition 
+ * @param[out] available_partition_max index of the last  public partition 
  */
-void aggregation_scheme_regular_pready(struct part_persist_regular_aggregation_state_t *state,
-                                       int partition, int* available_partition_min, int* available_partition_max);
+int aggregation_scheme_regular_pready_range(struct part_persist_regular_aggregation_state_t *state,
+                                       int part_min, int part_max, int* available_partition_min, int* available_partition_max);
 
 /**
  * @brief 
