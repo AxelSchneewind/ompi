@@ -290,7 +290,7 @@ mca_part_direct_precv_init(void *buf,
     assert(MPI_SUCCESS == err);
 
     err = MPI_Win_create(&req->tround,
-                         1,
+                         sizeof(int32_t),
                          sizeof(int32_t),
                          MPI_INFO_NULL,
                          req->comm,
@@ -385,7 +385,7 @@ mca_part_direct_psend_init(const void* buf,
     assert(MPI_SUCCESS == err);
 
     err = MPI_Win_create(&req->tround,
-                         1,
+                         sizeof(int32_t),
                          sizeof(int32_t),
                          MPI_INFO_NULL,
                          req->comm,
