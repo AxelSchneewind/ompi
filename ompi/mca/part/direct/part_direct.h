@@ -180,8 +180,8 @@ mca_part_direct_progress(void)
             if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round != req->tround) {
                 mca_part_direct_psend_request_t *sendreq = (mca_part_direct_psend_request_t *) req;
 
-                size_t done_count = opal_atomic_fetch_add_64(&req->done_count, 0);
                 size_t mark_count = opal_atomic_fetch_add_64(&req->mark_count, 0);
+                size_t done_count = opal_atomic_fetch_add_64(&req->done_count, 0);
 
                 /* Iterate through partition intervals that are queued for being started. Only applicable to sends. */ 
                 while(done_count < mark_count)
@@ -197,7 +197,7 @@ mca_part_direct_progress(void)
                     assert(MPI_SUCCESS == err);
 
                     done_count = opal_atomic_add_fetch_64(&req->done_count, interval.len);
-                    mark_count = opal_atomic_fetch_add_64(&req->mark_count, 0);
+                    mark_count = opal_atomic_add_fetch_64(&req->mark_count, 0);
                     opal_output_verbose(6, ompi_part_base_framework.framework_output, "called put on [%i,%i]\n", interval.begin, interval.begin + interval.len - 1);
                 }
 
@@ -233,13 +233,14 @@ mca_part_direct_progress(void)
                 }
 
                 /* Check for completion and complete the requests */
-                if(done_count >= req->parts)
+                if(done_count >= req->parts && mark_count >= req->parts)
                 {
+                    MPI_Win_flush_all(req->window);
+
 	                /* Increment round on reciever */
                     req->round++;
-                    MPI_Win_flush(1,req->window);
                     MPI_Put(&req->round, 1, MPI_INT, 1, 0, 1, MPI_INT, req->window_flags);
-                    MPI_Win_flush(1,req->window_flags);
+                    MPI_Win_flush_all(req->window_flags);
 
                     mca_part_direct_complete(req);
                 }
@@ -339,7 +340,7 @@ mca_part_direct_precv_init(void *buf,
     mca_part_direct_create_partition_communicator(comm, rank_count, ranks, &req->comm);
 
     err = MPI_Win_create(buf,
-                         parts * count * dt_size,
+                         req->req_bytes,
                          1,
                          MPI_INFO_NULL,
                          req->comm,
@@ -367,6 +368,9 @@ mca_part_direct_precv_init(void *buf,
     req->req_ompi.req_type = OMPI_REQUEST_PART;
     req->req_ompi.req_complete = REQUEST_COMPLETED;
     req->req_ompi.req_state = OMPI_REQUEST_INACTIVE;
+
+    opal_atomic_swap_64(&req->done_count, req->req_parts);
+    opal_atomic_swap_64(&req->mark_count, req->req_parts);
 
     /* Add element to progress engine */
     new_progress_elem = OBJ_NEW(mca_part_direct_list_t);
@@ -444,8 +448,7 @@ mca_part_direct_psend_init(const void* buf,
     mca_part_direct_create_partition_communicator(comm, rank_count, ranks, &req->comm);
 
     err = MPI_Win_create(req->buf,
-                         0,
-                         // req->req_bytes,
+                         req->req_bytes,
                          1,
                          MPI_INFO_NULL,
                          req->comm,
@@ -472,6 +475,10 @@ mca_part_direct_psend_init(const void* buf,
     req->req_ompi.req_type = OMPI_REQUEST_PART;
     req->req_ompi.req_complete = REQUEST_COMPLETED;
     req->req_ompi.req_state = OMPI_REQUEST_INACTIVE;
+
+    opal_atomic_swap_64(&req->done_count, req->req_parts);
+    opal_atomic_swap_64(&req->mark_count, req->req_parts);
+
  
     /* add element to progress queue */
     new_progress_elem = OBJ_NEW(mca_part_direct_list_t);
@@ -497,15 +504,18 @@ mca_part_direct_start(size_t count, ompi_request_t** requests)
         mca_part_direct_request_t *req = (mca_part_direct_request_t *)(requests[i]);
         req->tround++;
         if(MCA_PART_DIRECT_REQUEST_PSEND == req->req_type) {
-            req->done_count = 0;
-            opal_atomic_swap_64(&req->mark_count, 0);
-            // req->available_count = 0;
+
+            // hacky fix: an atomic swap might apparently overwrite a first increment from a pready call
+            opal_atomic_fetch_add_64(&req->done_count, -req->parts);
+            opal_atomic_fetch_add_64(&req->mark_count, -req->parts);
 
             mca_part_direct_psend_request_t *sendreq = (mca_part_direct_psend_request_t *) req;
             aggregation_scheme_dynamic_reset(&sendreq->aggregation_state);
         } else {
-            req->done_count = 0;
-            opal_atomic_swap_64(&req->mark_count, 0);
+            // hacky fix: an atomic swap might apparently overwrite a first increment from a pready call
+            opal_atomic_fetch_add_64(&req->done_count, -req->parts);
+            opal_atomic_fetch_add_64(&req->mark_count, -req->parts);
+            
 	        // /* Increment round on sender */
 	        // MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
 	        // MPI_Win_flush(0,req->window_flags);
