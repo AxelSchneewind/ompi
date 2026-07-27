@@ -183,6 +183,8 @@ mca_part_persist_progress(void)
     int err;
     size_t i;
 
+    if (0 == ompi_part_persist.progress_list->opal_list_length) return OMPI_SUCCESS;
+
     /* prevent re-entry, */
     int block_entry = opal_atomic_add_fetch_32(&(ompi_part_persist.block_entry), 1);
     if(1 < block_entry)
