@@ -99,7 +99,7 @@ mca_part_direct_free_req(struct mca_part_direct_request_t* req)
 
     MPI_Win_free(&req->window);
     MPI_Win_free(&req->window_flags);
-    MPI_Comm_free(&req->comm);
+    ompi_comm_free(&req->comm);
     free(req->flags);
 
     if( MCA_PART_DIRECT_REQUEST_PRECV == req->req_type ) {
@@ -161,6 +161,8 @@ mca_part_direct_progress(void)
     mca_part_direct_list_t *current;
     int err;
 
+    if (0 == ompi_part_direct.progress_list->opal_list_length) return OMPI_SUCCESS;
+
     /* prevent re-entry, */
     int block_entry = opal_atomic_add_fetch_32(&(ompi_part_direct.block_entry), 1);
     if(1 < block_entry)
@@ -180,34 +182,14 @@ mca_part_direct_progress(void)
             if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round != req->tround) {
                 mca_part_direct_psend_request_t *sendreq = (mca_part_direct_psend_request_t *) req;
 
-                size_t mark_count = opal_atomic_fetch_add_64(&req->mark_count, 0);
-                size_t done_count = opal_atomic_fetch_add_64(&req->done_count, 0);
+                size_t mark_count = req->req_parts;
+                bool all_marked =  opal_atomic_compare_exchange_strong_64(&req->mark_count, &mark_count, 0);
 
-                /* Iterate through partition intervals that are queued for being started. Only applicable to sends. */ 
-                while(done_count < mark_count)
-                {
-                    struct partition_interval_queue_element interval;
-                    interval.as_ptr = opal_ring_buffer_pop(&sendreq->available_intervals);
-                    if (NULL == interval.as_ptr) break;
+                if (mark_count > req->req_parts)
+                    opal_output_verbose(0, ompi_part_base_framework.framework_output, "marked %lu intervals of %lu, this should not happen\n", mark_count, req->req_parts);
 
-                    err = MPI_Put(req->buf + interval.begin * req->part_bytes, interval.len * req->part_bytes, 
-                                  MPI_CHAR, 1,
-                                  interval.begin * req->part_bytes, interval.len * req->part_bytes, 
-                                  MPI_CHAR, req->window);
-                    assert(MPI_SUCCESS == err);
-
-                    done_count = opal_atomic_add_fetch_64(&req->done_count, interval.len);
-                    mark_count = opal_atomic_add_fetch_64(&req->mark_count, 0);
-                    opal_output_verbose(6, ompi_part_base_framework.framework_output, "called put on [%i,%i]\n", interval.begin, interval.begin + interval.len - 1);
-                }
-
-                if (mark_count > req->parts)
-                    opal_output_verbose(0, ompi_part_base_framework.framework_output, "marked %lu intervals of %lu, this should not happen\n", mark_count, req->parts);
-                if (done_count > req->parts)
-                    opal_output_verbose(0, ompi_part_base_framework.framework_output, "sent   %lu intervals of %lu, this should not happen\n", req->done_count, req->parts);
-
-                // if mark_count reaches req->parts, collect remaining partitions
-                if (done_count < req->parts && mark_count >= req->parts)
+                // if mark_count reaches req->req_parts, collect remaining partitions
+                if (all_marked)
                 {
                     // put remaining
                     interval_state_t* remaining;
@@ -226,21 +208,29 @@ mca_part_direct_progress(void)
 
                         opal_output_verbose(6, ompi_part_base_framework.framework_output, "called put on [%i,%i]\n", interval.left, interval.right);
 
-                        done_count = opal_atomic_add_fetch_64(&req->done_count, count);
+                        opal_atomic_swap_64(&req->done_count, req->req_parts);
                     }
-                    opal_output_verbose(6, ompi_part_base_framework.framework_output, "collected %lu remaining intervals (marked: %lu, done: %lu)\n", remaining_count, mark_count, done_count);
-                    assert(done_count == req->parts);
+                    opal_output_verbose(6, ompi_part_base_framework.framework_output, "collected %lu remaining intervals (marked: %lu, done: %lu)\n", remaining_count, mark_count, req->done_count);
                 }
 
+                size_t done_count = req->req_parts;
+                bool all_done =  opal_atomic_compare_exchange_strong_64(&req->done_count, &done_count, 0);
+
+                if (done_count > req->req_parts)
+                    opal_output_verbose(0, ompi_part_base_framework.framework_output, "sent   %lu intervals of %lu, this should not happen\n", done_count, req->req_parts);
+
                 /* Check for completion and complete the requests */
-                if(done_count >= req->parts && mark_count >= req->parts)
+                if(all_done)
                 {
+                    opal_output_verbose(6, ompi_part_base_framework.framework_output, "flushing windows\n");
                     MPI_Win_flush_all(req->window);
 
 	                /* Increment round on reciever */
                     req->round++;
                     MPI_Put(&req->round, 1, MPI_INT, 1, 0, 1, MPI_INT, req->window_flags);
                     MPI_Win_flush_all(req->window_flags);
+
+                    opal_output_verbose(6, ompi_part_base_framework.framework_output, "flushed windows\n");
 
                     mca_part_direct_complete(req);
                 }
@@ -273,6 +263,7 @@ __opal_attribute_always_inline__ static inline void
 mca_part_direct_create_partition_communicator(MPI_Comm comm,
                                    int rank_count,
                                    const int ranks[],
+                                   int tag,
                                    MPI_Comm* new_comm)
 {
     int err = MPI_SUCCESS;
@@ -284,8 +275,11 @@ mca_part_direct_create_partition_communicator(MPI_Comm comm,
     err = ompi_group_incl(group_super, rank_count, ranks, &group_sub);
     assert(MPI_SUCCESS == err);
 
-    err = ompi_comm_create_group(comm, group_sub, 0, new_comm);
+    err = ompi_comm_create_group(comm, group_sub, tag, new_comm);
     assert(MPI_SUCCESS == err);
+
+    ompi_group_free (&group_sub);
+    ompi_group_free (&group_super);
 }
 
 
@@ -337,17 +331,19 @@ mca_part_direct_precv_init(void *buf,
     int ranks[rank_count];
     ranks[0] = src;
     ranks[1] = rank_super;
-    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, &req->comm);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "creating communicator for transfer with %i ranks: [%i, %i]\n", rank_count, ranks[0], ranks[1]);
+    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, req->req_tag, &req->comm);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "created communicator for transfer\n");
 
     err = MPI_Win_create(buf,
-                         req->req_bytes,
+                         parts * count * dt_size,
                          1,
                          MPI_INFO_NULL,
                          req->comm,
                          &req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window); fflush(stdout);
+    err = MPI_Win_lock_all(1, req->window);
     assert(MPI_SUCCESS == err);
 
     err = MPI_Win_create(&req->round,
@@ -369,8 +365,8 @@ mca_part_direct_precv_init(void *buf,
     req->req_ompi.req_complete = REQUEST_COMPLETED;
     req->req_ompi.req_state = OMPI_REQUEST_INACTIVE;
 
-    opal_atomic_swap_64(&req->done_count, req->req_parts);
-    opal_atomic_swap_64(&req->mark_count, req->req_parts);
+    opal_atomic_swap_64(&req->done_count, 0);
+    opal_atomic_swap_64(&req->mark_count, 0);
 
     /* Add element to progress engine */
     new_progress_elem = OBJ_NEW(mca_part_direct_list_t);
@@ -423,7 +419,7 @@ mca_part_direct_psend_init(const void* buf,
     req->count = count;
     req->buf = (uint8_t*)buf;
 
-    req->flags = (int*) calloc(req->parts, sizeof(int));
+    req->flags = (int*) calloc(req->req_parts, sizeof(int));
 
     req->round = 0;
     req->tround = 0;
@@ -437,7 +433,7 @@ mca_part_direct_psend_init(const void* buf,
     opal_output_verbose(5, ompi_part_base_framework.framework_output, "aggregating %lu*%lu partitioning with factor %lu and algorithm %i\n", parts, count, factor, algorithm);
 
     /* init partition interval queue */
-    opal_ring_buffer_init(&sendreq->available_intervals, req->parts);
+    opal_ring_buffer_init(&sendreq->available_intervals, req->req_parts);
 
     int rank_super;
     err = MPI_Comm_rank(comm, &rank_super);
@@ -445,17 +441,19 @@ mca_part_direct_psend_init(const void* buf,
     int ranks[rank_count];
     ranks[0] = rank_super;
     ranks[1] = dst;
-    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, &req->comm);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "creating communicator for transfer with %i ranks: [%i, %i]\n", rank_count, ranks[0], ranks[1]);
+    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, req->req_tag, &req->comm);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "created communicator for transfer\n");
 
     err = MPI_Win_create(req->buf,
-                         req->req_bytes,
+                         parts * count * dt_size,
                          1,
                          MPI_INFO_NULL,
                          req->comm,
                          &req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window); fflush(stdout);
+    err = MPI_Win_lock_all(1, req->window);
     assert(MPI_SUCCESS == err);
 
     err = MPI_Win_create(&req->round,
@@ -476,8 +474,8 @@ mca_part_direct_psend_init(const void* buf,
     req->req_ompi.req_complete = REQUEST_COMPLETED;
     req->req_ompi.req_state = OMPI_REQUEST_INACTIVE;
 
-    opal_atomic_swap_64(&req->done_count, req->req_parts);
-    opal_atomic_swap_64(&req->mark_count, req->req_parts);
+    opal_atomic_swap_64(&req->done_count, 0);
+    opal_atomic_swap_64(&req->mark_count, 0);
 
  
     /* add element to progress queue */
@@ -502,20 +500,17 @@ mca_part_direct_start(size_t count, ompi_request_t** requests)
 
     for(i = 0; i < _count && OMPI_SUCCESS == err; i++) {
         mca_part_direct_request_t *req = (mca_part_direct_request_t *)(requests[i]);
+
+        // err = MPI_Win_lock_all(1, req->window);
+        // assert(MPI_SUCCESS == err);
+        // err = MPI_Win_lock_all(1, req->window_flags);
+        // assert(MPI_SUCCESS == err);
+
         req->tround++;
         if(MCA_PART_DIRECT_REQUEST_PSEND == req->req_type) {
-
-            // hacky fix: an atomic swap might apparently overwrite a first increment from a pready call
-            opal_atomic_fetch_add_64(&req->done_count, -req->parts);
-            opal_atomic_fetch_add_64(&req->mark_count, -req->parts);
-
             mca_part_direct_psend_request_t *sendreq = (mca_part_direct_psend_request_t *) req;
             aggregation_scheme_dynamic_reset(&sendreq->aggregation_state);
         } else {
-            // hacky fix: an atomic swap might apparently overwrite a first increment from a pready call
-            opal_atomic_fetch_add_64(&req->done_count, -req->parts);
-            opal_atomic_fetch_add_64(&req->mark_count, -req->parts);
-            
 	        // /* Increment round on sender */
 	        // MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
 	        // MPI_Win_flush(0,req->window_flags);
@@ -541,6 +536,8 @@ mca_part_direct_pready(size_t min_part,
 
     mca_part_direct_request_t *req = (mca_part_direct_request_t *)(request);
     mca_part_direct_psend_request_t *sendreq = (mca_part_direct_psend_request_t *) req;
+    
+    opal_output_verbose(7, ompi_part_base_framework.framework_output, "inserting [%lu,%lu]\n", min_part, max_part);
 
     int left, right;
     int extracted = aggregation_scheme_dynamic_pready_range(&sendreq->aggregation_state, min_part, max_part, &left, &right);
