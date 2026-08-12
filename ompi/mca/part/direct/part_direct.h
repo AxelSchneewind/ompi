@@ -70,6 +70,8 @@ struct ompi_part_direct_t {
     int                    algorithm;
     opal_list_t           *progress_list;
 
+    int next_comm_tag;
+
     opal_atomic_int32_t    block_entry;
     opal_mutex_t lock; 
 };
@@ -94,13 +96,19 @@ __opal_attribute_always_inline__ static inline int
 mca_part_direct_free_req(struct mca_part_direct_request_t* req)
 {
     int err = OMPI_SUCCESS;
+    size_t i;
     opal_list_remove_item(ompi_part_direct.progress_list, (opal_list_item_t*)req->progress_elem);
     OBJ_RELEASE(req->progress_elem);
 
     MPI_Win_free(&req->window);
     MPI_Win_free(&req->window_flags);
-    ompi_comm_free(&req->comm);
+    MPI_Comm_free(&req->comm);
+    req->window = NULL;
+    req->window_flags = NULL;
+    req->comm = NULL;
+
     free(req->flags);
+    req->flags = NULL;
 
     if( MCA_PART_DIRECT_REQUEST_PRECV == req->req_type ) {
         MCA_PART_DIRECT_PRECV_REQUEST_RETURN(req);
@@ -179,7 +187,8 @@ mca_part_direct_progress(void)
         mca_part_direct_request_t *req = (mca_part_direct_request_t *) current->item;
         if(MCA_PART_DIRECT_REQUEST_PSEND == req->req_type)
         {
-            if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round != req->tround) {
+            if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state && req->round != req->tround) 
+            {
                 mca_part_direct_psend_request_t *sendreq = (mca_part_direct_psend_request_t *) req;
 
                 size_t mark_count = req->req_parts;
@@ -200,7 +209,8 @@ mca_part_direct_progress(void)
                     {
                         interval_state_t interval = remaining[r];
                         size_t count = (interval.right - interval.left + 1);
-                        err = MPI_Put(req->buf + interval.left * req->part_bytes, count * req->part_bytes, 
+                        err = req->window->w_osc_module->osc_put(
+                                      req->buf + interval.left * req->part_bytes, count * req->part_bytes, 
                                       MPI_CHAR, 1,
                                       interval.left * req->part_bytes, count * req->part_bytes, 
                                       MPI_CHAR, req->window);
@@ -231,6 +241,8 @@ mca_part_direct_progress(void)
                     MPI_Win_flush_all(req->window_flags);
 
                     opal_output_verbose(6, ompi_part_base_framework.framework_output, "flushed windows\n");
+                    MPI_Win_unlock_all(req->window);
+                    MPI_Win_unlock_all(req->window_flags);
 
                     mca_part_direct_complete(req);
                 }
@@ -238,6 +250,8 @@ mca_part_direct_progress(void)
         } else {
             if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state) {
 		        if(req->round == req->tround) {
+                    MPI_Win_unlock_all(req->window);
+                    MPI_Win_unlock_all(req->window_flags);
                     mca_part_direct_complete(req);
 		        }
 	        }
@@ -264,22 +278,28 @@ mca_part_direct_create_partition_communicator(MPI_Comm comm,
                                    int rank_count,
                                    const int ranks[],
                                    int tag,
-                                   MPI_Comm* new_comm)
+                                   ompi_communicator_t** new_comm)
 {
     int err = MPI_SUCCESS;
-    MPI_Group group_super, group_sub;
+    ompi_group_t *group_super, *group_sub;
+    
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "creating communicator for transfer with %i ranks: [%i, %i]\n", rank_count, ranks[0], ranks[1]);
 
-    err = ompi_comm_group(comm, &group_super);
+    err = MPI_Comm_group(comm, &group_super);
     assert(MPI_SUCCESS == err);
 
-    err = ompi_group_incl(group_super, rank_count, ranks, &group_sub);
+    err = MPI_Group_incl(group_super, rank_count, ranks, &group_sub);
     assert(MPI_SUCCESS == err);
 
-    err = ompi_comm_create_group(comm, group_sub, tag, new_comm);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "creating communicator\n");
+
+    err = MPI_Comm_create_group(comm, group_sub, tag, new_comm);
     assert(MPI_SUCCESS == err);
 
-    ompi_group_free (&group_sub);
-    ompi_group_free (&group_super);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "done\n");
+
+    MPI_Group_free (&group_sub);
+    MPI_Group_free (&group_super);
 }
 
 
@@ -291,7 +311,7 @@ mca_part_direct_precv_init(void *buf,
                         int src,
                         int tag,
                         struct ompi_communicator_t *comm,
-			struct ompi_info_t * info,
+			            struct ompi_info_t * info,
                         struct ompi_request_t **request)
 {
     int err = OMPI_SUCCESS;
@@ -331,9 +351,7 @@ mca_part_direct_precv_init(void *buf,
     int ranks[rank_count];
     ranks[0] = src;
     ranks[1] = rank_super;
-    opal_output_verbose(5, ompi_part_base_framework.framework_output, "creating communicator for transfer with %i ranks: [%i, %i]\n", rank_count, ranks[0], ranks[1]);
-    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, req->req_tag, &req->comm);
-    opal_output_verbose(5, ompi_part_base_framework.framework_output, "created communicator for transfer\n");
+    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, ompi_part_direct.next_comm_tag++, &req->comm);
 
     err = MPI_Win_create(buf,
                          parts * count * dt_size,
@@ -343,7 +361,7 @@ mca_part_direct_precv_init(void *buf,
                          &req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window);
+    err = req->window->w_osc_module->osc_lock_all(1, req->window);
     assert(MPI_SUCCESS == err);
 
     err = MPI_Win_create(&req->round,
@@ -354,7 +372,7 @@ mca_part_direct_precv_init(void *buf,
                          &req->window_flags);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window_flags);
+    err = req->window_flags->w_osc_module->osc_lock_all(1, req->window_flags);
     assert(MPI_SUCCESS == err);
 
 
@@ -419,7 +437,7 @@ mca_part_direct_psend_init(const void* buf,
     req->count = count;
     req->buf = (uint8_t*)buf;
 
-    req->flags = (int*) calloc(req->req_parts, sizeof(int));
+    req->flags = (int*) calloc(req->parts, sizeof(int));
 
     req->round = 0;
     req->tround = 0;
@@ -441,9 +459,7 @@ mca_part_direct_psend_init(const void* buf,
     int ranks[rank_count];
     ranks[0] = rank_super;
     ranks[1] = dst;
-    opal_output_verbose(5, ompi_part_base_framework.framework_output, "creating communicator for transfer with %i ranks: [%i, %i]\n", rank_count, ranks[0], ranks[1]);
-    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, req->req_tag, &req->comm);
-    opal_output_verbose(5, ompi_part_base_framework.framework_output, "created communicator for transfer\n");
+    mca_part_direct_create_partition_communicator(comm, rank_count, ranks, ompi_part_direct.next_comm_tag++, &req->comm);
 
     err = MPI_Win_create(req->buf,
                          parts * count * dt_size,
@@ -453,7 +469,7 @@ mca_part_direct_psend_init(const void* buf,
                          &req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window);
+    err = req->window->w_osc_module->osc_lock_all(1, req->window);
     assert(MPI_SUCCESS == err);
 
     err = MPI_Win_create(&req->round,
@@ -464,7 +480,7 @@ mca_part_direct_psend_init(const void* buf,
                          &req->window_flags);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window_flags);
+    err = req->window_flags->w_osc_module->osc_lock_all(1, req->window_flags);
     assert(MPI_SUCCESS == err);
 
     /* Initilaize completion variables */
@@ -501,9 +517,9 @@ mca_part_direct_start(size_t count, ompi_request_t** requests)
     for(i = 0; i < _count && OMPI_SUCCESS == err; i++) {
         mca_part_direct_request_t *req = (mca_part_direct_request_t *)(requests[i]);
 
-        // err = MPI_Win_lock_all(1, req->window);
+        err = MPI_Win_lock_all(1, req->window);
         // assert(MPI_SUCCESS == err);
-        // err = MPI_Win_lock_all(1, req->window_flags);
+        err = MPI_Win_lock_all(1, req->window_flags);
         // assert(MPI_SUCCESS == err);
 
         req->tround++;
@@ -546,7 +562,7 @@ mca_part_direct_pready(size_t min_part,
     {   // interval ready to transfer
         struct partition_interval_queue_element interval = { .begin = left, .len = right - left + 1 };
 
-        err = MPI_Put(req->buf + interval.begin * req->part_bytes, interval.len * req->part_bytes, 
+        err = req->window->w_osc_module->osc_put(req->buf + interval.begin * req->part_bytes, interval.len * req->part_bytes, 
                       MPI_CHAR, 1,
                       interval.begin * req->part_bytes, interval.len * req->part_bytes, 
                       MPI_CHAR, req->window);

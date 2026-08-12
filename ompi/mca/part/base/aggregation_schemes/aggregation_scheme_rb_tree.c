@@ -48,9 +48,6 @@ void aggregation_scheme_rb_tree_reset(struct part_persist_rb_tree_aggregation_st
     opal_atomic_swap_64(&state->interval_count, 0);
 
     opal_rb_tree_destroy(&state->intervals);
-    OBJ_DESTRUCT(&state->intervals);
-
-    OBJ_CONSTRUCT(&state->intervals, opal_rb_tree_t);
     opal_rb_tree_init(&state->intervals, interval_comp_fn);
 }
 
