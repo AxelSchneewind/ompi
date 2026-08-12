@@ -21,17 +21,17 @@
  * $HEADER$
  */
 
-#ifndef PART_DIRECT_RECVREQ_H
-#define PART_DIRECT_RECVREQ_H
+#ifndef PART_DIRECT_ORIGINAL_RECVREQ_H
+#define PART_DIRECT_ORIGINAL_RECVREQ_H
 
-#include "ompi/mca/part/direct/part_direct_request.h"
+#include "ompi/mca/part/direct_original/part_direct_original_request.h"
 #include "ompi/mca/part/base/part_base_precvreq.h"
 
-struct mca_part_direct_precv_request_t {
-    mca_part_direct_request_t req_base;
+struct mca_part_direct_original_precv_request_t {
+    mca_part_direct_original_request_t req_base;
 };
-typedef struct mca_part_direct_precv_request_t mca_part_direct_precv_request_t;
-OBJ_CLASS_DECLARATION(mca_part_direct_precv_request_t);
+typedef struct mca_part_direct_original_precv_request_t mca_part_direct_original_precv_request_t;
+OBJ_CLASS_DECLARATION(mca_part_direct_original_precv_request_t);
 
 /**
  *  Allocate a recv request from the modules free list.
@@ -39,11 +39,11 @@ OBJ_CLASS_DECLARATION(mca_part_direct_precv_request_t);
  *  @param rc (OUT)  OMPI_SUCCESS or error status on failure.
  *  @return          Receive request.
  */
-#define MCA_PART_DIRECT_PRECV_REQUEST_ALLOC(precvreq)                           \
+#define MCA_PART_DIRECT_ORIGINAL_PRECV_REQUEST_ALLOC(precvreq)                           \
 do {                                                                         \
-    precvreq = (mca_part_direct_precv_request_t*)                               \
-      opal_free_list_get (&mca_part_direct_precv_requests);                    \
-    precvreq->req_base.req_type = MCA_PART_DIRECT_REQUEST_PRECV;            \
+    precvreq = (mca_part_direct_original_precv_request_t*)                               \
+      opal_free_list_get (&mca_part_direct_original_precv_requests);                    \
+    precvreq->req_base.req_type = MCA_PART_DIRECT_ORIGINAL_REQUEST_PRECV;            \
  } while (0)
 
 /**
@@ -57,7 +57,7 @@ do {                                                                         \
  * @param comm (IN)          Communicator.
  * @param directent (IN)    Is this a ersistent request.
  */
-#define MCA_PART_DIRECT_PRECV_REQUEST_INIT( request,                     \
+#define MCA_PART_DIRECT_ORIGINAL_PRECV_REQUEST_INIT( request,                     \
                                          ompi_proc,                   \
                                          comm,                        \
                                          tag,                         \
@@ -88,13 +88,13 @@ do {                                                                  \
 /**
  *  Free the PART receive request
  */
-#define MCA_PART_DIRECT_PRECV_REQUEST_RETURN(recvreq)                      \
+#define MCA_PART_DIRECT_ORIGINAL_PRECV_REQUEST_RETURN(recvreq)                      \
 {                                                                       \
     OBJ_RELEASE((recvreq)->req_comm);                          \
     OMPI_DATATYPE_RELEASE((recvreq)->req_datatype);            \
     OMPI_REQUEST_FINI(&(recvreq)->req_ompi);                   \
     opal_convertor_cleanup( &((recvreq)->req_convertor) );     \
-    opal_free_list_return ( &mca_part_direct_precv_requests,               \
+    opal_free_list_return ( &mca_part_direct_original_precv_requests,               \
                            (opal_free_list_item_t*)(recvreq));          \
 }
 
