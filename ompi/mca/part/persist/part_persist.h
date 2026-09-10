@@ -95,20 +95,30 @@ extern ompi_part_persist_t ompi_part_persist;
 
 /**
  * @brief selects an internal partitioning based on the user-provided partitioning
- * and the mca parameters for minimal partition size and maximal partition count.
+ * and the mca-parameters for minimal partition size and maximal partition count.
  * 
- * More precisely, given a partitioning into p partitions of size s, computes
- * an internal partitioning into p'-1 partitions of size s' and an additional 
- * partition (remainder) of size r * s. s' is selected to be a multiple of s
- * and r such that remainder r * s is smaller than s.
+ * public partitioning:     |----|----|----|----|----|----|----|----|
+ *                          ^ parts * part_size
+ * internal partitioning:   |--------------|--------------|---------|  
+ *                                                        ^ factor_last * part_size
+ *                          ^ (internal_parts - 1) * factor * part_size
+ * 
+ * The aggregation factor is selected such that the constraints from `min_message_size`
+ * and `max_message_count` are fulfilled. The last internal partition corresponds to
+ * `factor_last` public ones which may be fewer if `parts` is not divisible
+ * by `factor`.
+ * The resulting partitioning fulfills the equation 
+ *   parts * part_size = (internal_parts - 1) * factor * part_size + factor_last * part_size
  *
- * @param (IN)  partitions           number of user-provided partitions
- * @param (IN)  count                size of user-provided partitions in elements
- * @param (OUT) internal_partitions  number of internal partitions
- * @param (OUT) factor               number of public partitions corresponding to each internal partitions other than the last one
- * @param (OUT) last_size            number of public partitions corresponding to the last internal partition
+ * @param partitions (IN)            number of user-provided partitions
+ * @param part_size (IN)             number of bytes per user-provided partition
+ * @param internal_partitions (OUT)  number of internal partitions
+ * @param factor (OUT)               number of public partitions corresponding to each internal partitions other than the last one.
+ *                                   Internal partitions have size factor * part_size.
+ * @param factor_last (OUT)          number of public partitions corresponding to the last internal partition.
+ *                                   The last internal partition therefore has size factor * part_size.
  */
-static inline void part_persist_select_internal_partitioning(size_t partitions, size_t part_size, size_t* internal_partitions, size_t* factor, size_t* remainder) {
+static inline void part_persist_select_internal_partitioning(size_t partitions, size_t part_size, size_t* internal_partitions, size_t* factor, size_t* factor_last) {
     size_t buffer_size = partitions * part_size;
     size_t min_part_size  = ompi_part_persist.min_message_size;
     size_t max_part_count = ompi_part_persist.max_message_count;
@@ -123,27 +133,36 @@ static inline void part_persist_select_internal_partitioning(size_t partitions, 
         min_part_size = buffer_size;
     }
 
-    size_t _internal_partitions, _factor, _remainder;
+    size_t _internal_partitions, _factor, _factor_last;
 
     if (part_size < min_part_size) {
-        // solve partitions = (internal_partitions - 1) * factor + remainder for factor and remainder
-        _factor = min_part_size / part_size;
-        _internal_partitions = (partitions + _factor - 1) / _factor;
-        _remainder = partitions % (_factor);
+        // partition size too small, compute coarser partitioning
+        // compute factor by ceiled division, ensures that part_size * factor >= min_part_size
+        _factor = (min_part_size + part_size - 1) / part_size;
+        if (_factor > partitions) _factor = partitions;
 
-        if (0 == _remainder) { 
-            // we still need the size of the last partition
-            _remainder = _factor;
+        // division with remainder, _internal_partitions is floored and _factor_last may be 0
+        _internal_partitions = partitions / _factor;
+        _factor_last = partitions % _factor;
+
+        // ensure that last partition is nonempty and included in internal_parts
+        if (0 == _factor_last) { 
+            // last partition has same size as the others
+            _factor_last = _factor;
+        } else { 
+            // _internal_partitions was floored, add one for the last partition
+            _internal_partitions += 1;
         }
-    } else {    // can keep original partitioning
+    } else {    
+        // can keep original partitioning
         _internal_partitions = partitions;
         _factor = 1;
-        _remainder = 1;
+        _factor_last = 1;
     }
 
     *internal_partitions = _internal_partitions;
     *factor = _factor;
-    *remainder = _remainder;
+    *factor_last = _factor_last;
 }
 
 
@@ -546,18 +565,18 @@ mca_part_persist_psend_init(const void* buf,
     req->my_recv_tag = req->setup_info[0].setup_tag;
 
     /* select internal partitioning (i.e. real_parts) here */
-    size_t factor, remaining_partitions;
-    part_persist_select_internal_partitioning(parts, count, &req->real_parts, &factor, &remaining_partitions);
+    size_t factor, factor_last;
+    part_persist_select_internal_partitioning(parts, count * dt_size, &req->real_parts, &factor, &factor_last);
 
-    aggregation_scheme_regular_psend_init(&req->aggregation_state, req->real_parts, factor, remaining_partitions);
+    aggregation_scheme_regular_psend_init(&req->aggregation_state, req->real_parts, factor, factor_last);
 
-    req->real_count_last = remaining_partitions * count;     // convert to number of elements
+    req->real_count_last = factor_last * count;     // convert to number of elements
     req->real_count = factor * count;
     req->setup_info[0].num_parts = req->real_parts;         // setup info has to contain internal partitioning
     req->setup_info[0].count     = req->real_count;
     req->setup_info[0].count_last = req->real_count_last;
     req->setup_info[0].dt_size = dt_size;
-    opal_output_verbose(5, ompi_part_base_framework.framework_output, "mapped given %lu*%lu partitioning to internal partitioning of %lu*%lu + %lu elements\n", parts, count, req->real_parts - 1, req->real_count, req->real_count_last);
+    opal_output_verbose(5, ompi_part_base_framework.framework_output, "mapped given %lu*%lu partitioning to internal partitioning of %lu*%lu + %lu bytes\n", parts, count * dt_size, req->real_parts - 1, req->real_count * dt_size, req->real_count_last * dt_size);
 
     ompi_part_persist.next_send_tag += req->real_parts; 
     ompi_part_persist.next_recv_tag++;
