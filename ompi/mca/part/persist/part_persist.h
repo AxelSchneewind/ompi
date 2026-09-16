@@ -613,18 +613,14 @@ mca_part_persist_pready(size_t min_part,
     int last_internal_part_ready = (right * req->req_count + req->req_count - 1) / req->real_count;
 
     // queue or start available internal partitions
-    int first_internal_part_ready, last_internal_part_ready;
-    for(i = min_part; i <= max_part && OMPI_SUCCESS == err; i++) {
-        aggregation_scheme_dynamic_pready(&req->aggregation_state, i, &first_internal_part_ready, &last_internal_part_ready);
-
-        if (-1 != internal_part_ready) {
-            if(true == req->initialized) {
-                err = req->persist_reqs[internal_part_ready]->req_start(1, (&(req->persist_reqs[internal_part_ready])));
-                req->flags[internal_part_ready] = 0;     /* Mark partition as ready for testing */
-
-            } else {
-                req->flags[internal_part_ready] = -2;    /* Mark partition as queued */
-            }
+    if(true == req->initialized) {
+        err = req->persist_reqs[i]->req_start(last_internal_part_ready - first_internal_part_ready + 1, (&(req->persist_reqs[first_internal_part_ready])));
+        for(i = first_internal_part_ready; i <= last_internal_part_ready && OMPI_SUCCESS == err; i++) {
+            req->flags[i] = 0;     /* Mark partition as ready for testing */
+        }
+    } else {
+        for(i = first_internal_part_ready; i <= last_internal_part_ready; i++) {
+            req->flags[i] = -2;    /* Mark partition as queued */
         }
     }
     
