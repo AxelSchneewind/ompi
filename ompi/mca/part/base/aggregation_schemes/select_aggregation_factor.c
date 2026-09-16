@@ -30,8 +30,8 @@ void aggregation_schemes_select_factor(size_t parts, size_t count, size_t max_pa
     if (count < min_count) {    // have to use larger partititions
         // partition size too small, compute coarser partitioning
         // compute factor by ceiled division, ensures that count * factor >= min_count
-        _factor = (min_count + part_size - 1) / count;
-        if (_factor > partitions) _factor = partitions;
+        _factor = (min_count + count - 1) / count;
+        if (_factor > parts) _factor = parts;
     } else {    // can keep original partitioning
         _factor = 1;
     }
