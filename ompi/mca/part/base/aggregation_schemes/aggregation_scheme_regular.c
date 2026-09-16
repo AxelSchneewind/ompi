@@ -33,7 +33,7 @@ void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, 
     }
 
     *internal_partitions = _internal_partitions;
-    *remainder = _remainder;
+    _factor_last = _factor_last;
 }
 
 // converts the index of a public partition to the index of its corresponding internal partition
