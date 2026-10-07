@@ -41,7 +41,7 @@ mca_part_base_component_4_0_0_t mca_part_direct_original_component = {
     .partm_version = {
         MCA_PART_BASE_VERSION_2_0_0,
 
-        .mca_component_name = "direct",
+        .mca_component_name = "direct_original",
         MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
                               OMPI_RELEASE_VERSION),
         .mca_open_component = mca_part_direct_original_component_open,
