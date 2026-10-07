@@ -42,9 +42,11 @@ static inline int internal_partition(struct part_persist_regular_aggregation_sta
     return public_part / state->factor;
 }
 
-void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state,
-                                        int internal_partition_count, int factor, int last_internal_partition_size)
+void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state, int parts, int factor)
 {
+    size_t last_internal_partition_size, internal_partition_count;
+    aggregation_scheme_regular_select_internal_partitioning(parts, factor, &internal_partition_count, &last_internal_partition_size);
+    
     state->public_partition_count = (internal_partition_count - 1) * factor + last_internal_partition_size;
     state->internal_partition_count = internal_partition_count;
 
@@ -74,7 +76,7 @@ static inline int num_public_parts(struct part_persist_regular_aggregation_state
     return is_last_partition(state, partition) ? state->last_internal_partition_size : state->factor;
 }
 
-void aggregation_scheme_regular_pready(struct part_persist_regular_aggregation_state_t *state, int partition, int* available_partition_min, int* available_partition_max)
+void aggregation_scheme_regular_pready_range(struct part_persist_regular_aggregation_state_t *state, int partition, int* available_partition_min, int* available_partition_max)
 {
     int internal_part = internal_partition(state, partition);
     int corresponding_public_parts = num_public_parts(state, internal_part);

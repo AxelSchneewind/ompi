@@ -70,16 +70,11 @@ void aggregation_scheme_regular_select_internal_partitioning(size_t partitions, 
  * @brief initializes the aggregation state for the sending side
  *
  * @param[out] state                        pointer to aggregation state object
- * @param[in] internal_partition_count      number of internal partitions (i.e. number of messages
- * per partitioned transfer)
+ * @param[in] parts                         number of public partitions
  * @param[in] factor                        number of public partitions corresponding to each internal one other than the last
- * @param[in] last_internal_partition_size  number of public partitions corresponding to last
  * internal partition
  */
-void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state,
-                                           int internal_partition_count,
-                                           int factor,
-                                           int last_internal_partition_size);
+void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_state_t *state, int parts, int factor);
 
 /**
  * @brief resets the aggregation state
@@ -89,14 +84,14 @@ void aggregation_scheme_regular_init(struct part_persist_regular_aggregation_sta
 void aggregation_scheme_regular_reset(struct part_persist_regular_aggregation_state_t *state);
 
 /**
- * @brief marks a public partition as ready
+ * @brief marks a range of public partitions as ready
  *
  * @param[in,out] state                pointer to aggregation state object
  * @param[in] partition                index of the public partition to mark ready
  * @param[out] available_partition_min index of the first internal partition 
  * @param[out] available_partition_max index of the last internal partition 
  */
-void aggregation_scheme_regular_pready(struct part_persist_regular_aggregation_state_t *state,
+void aggregation_scheme_regular_pready_range(struct part_persist_regular_aggregation_state_t *state,
                                        int partition, int* available_partition_min, int* available_partition_max);
 
 /**
