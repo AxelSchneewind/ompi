@@ -78,9 +78,9 @@ mca_part_direct_original_free_req(struct mca_part_direct_original_request_t* req
     opal_list_remove_item(ompi_part_direct_original.progress_list, (opal_list_item_t*)req->progress_elem);
     OBJ_RELEASE(req->progress_elem);
 
-    MPI_Win_free(&req->window);
-    MPI_Win_free(&req->window_flags);
-    MPI_Comm_free(&req->comm);
+    ompi_win_free(req->window);
+    ompi_win_free(req->window_flags);
+    ompi_comm_free(&req->comm);
     free(req->flags);
 
     if( MCA_PART_DIRECT_ORIGINAL_REQUEST_PRECV == req->req_type ) {
@@ -163,34 +163,34 @@ mca_part_direct_original_progress(void)
                for(i = 0; i < req->parts; i++) {
                     /* Check to see if partition is queued for being started. Only applicable to sends. */ 
                     if(-2 ==  req->flags[i]) {
-   	  	                err = MPI_Put(req->buf + i*req->part_bytes, req->part_bytes, MPI_CHAR, 1,
-                                      i*req->part_bytes, req->part_bytes, MPI_CHAR, req->window);
+                            err = req->window->w_osc_module->osc_put(req->buf + i*req->part_bytes, req->part_bytes, MPI_CHAR, 1, 
+                                i*req->part_bytes, req->part_bytes, MPI_CHAR, req->window);
                         assert(MPI_SUCCESS == err);
 
                         req->flags[i] = 0;
-			            req->done_count++;
+                        req->done_count++;
                     }
                 }
 
                 /* Check for completion and complete the requests */
                 if(req->done_count == req->parts)
                 {
-	                /* Incriment round on reciever */
+                    /* Incriment round on reciever */
                     req->round++;
-		            MPI_Win_flush(1,req->window);
-                    MPI_Put(&req->round, 1, MPI_INT, 1, 0, 1, MPI_INT, req->window_flags);
-                    MPI_Win_flush(1,req->window_flags);
+                    // req->window->w_osc_module->osc_flush(1, req->window);
+                    err = req->window->w_osc_module->osc_put(&req->round, 1, MPI_INT, 1, 0, 1, MPI_INT, req->window_flags);
+                    // req->window_flags->w_osc_module->osc_flush(1, req->window_flags);
 
                     mca_part_direct_original_complete(req);
                 }
             }	    
         } else {
             if(false == req->req_part_complete && REQUEST_COMPLETED != req->req_ompi.req_complete && OMPI_REQUEST_ACTIVE == req->req_ompi.req_state) {
-		    if(req->round == req->tround) {
+            if(req->round == req->tround) {
                 mca_part_direct_original_complete(req);
-		    }
-	    }
-	}
+            }
+        }
+    }
 
         if(true == req->req_free_called && true == req->req_part_complete && REQUEST_COMPLETED == req->req_ompi.req_complete &&  OMPI_REQUEST_INACTIVE == req->req_ompi.req_state) {
             to_delete = req;
@@ -215,7 +215,7 @@ mca_part_direct_original_create_partition_communicator(MPI_Comm comm,
                                    MPI_Comm* new_comm)
 {
     int err = MPI_SUCCESS;
-    MPI_Group group_super, group_sub;
+    ompi_group_t *group_super, *group_sub;
 
     err = ompi_comm_group(comm, &group_super);
     assert(MPI_SUCCESS == err);
@@ -225,6 +225,9 @@ mca_part_direct_original_create_partition_communicator(MPI_Comm comm,
 
     err = ompi_comm_create_group(comm, group_sub, 0, new_comm);
     assert(MPI_SUCCESS == err);
+
+    ompi_group_free(&group_sub);
+    ompi_group_free(&group_super);
 }
 
 
@@ -236,7 +239,7 @@ mca_part_direct_original_precv_init(void *buf,
                         int src,
                         int tag,
                         struct ompi_communicator_t *comm,
-			struct ompi_info_t * info,
+                        struct ompi_info_t * info,
                         struct ompi_request_t **request)
 {
     int err = OMPI_SUCCESS;
@@ -270,34 +273,33 @@ mca_part_direct_original_precv_init(void *buf,
     req->round = 0;
     req->tround = 0;
 
-    int rank_super;
-    err = MPI_Comm_rank(comm, &rank_super);
+    int rank_super = ompi_comm_rank(comm);
     int rank_count = 2;
     int ranks[rank_count];
     ranks[0] = src;
     ranks[1] = rank_super;
     mca_part_direct_original_create_partition_communicator(comm, rank_count, ranks, &req->comm);
 
-    err = MPI_Win_create(buf,
+    err = ompi_win_create(buf,
                          parts * count * dt_size,
                          1,
-                         MPI_INFO_NULL,
                          req->comm,
+                         &(MPI_INFO_NULL->super),
                          &req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window); fflush(stdout);
+    err = req->window->w_osc_module->osc_lock_all(1, req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_create(&req->round,
+    err = ompi_win_create(&req->round,
                          sizeof(int32_t),
                          sizeof(int32_t),
-                         MPI_INFO_NULL,
                          req->comm,
+                         &(MPI_INFO_NULL->super),
                          &req->window_flags);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window_flags);
+    err = req->window_flags->w_osc_module->osc_lock_all(1, req->window_flags);
     assert(MPI_SUCCESS == err);
 
 
@@ -330,7 +332,7 @@ mca_part_direct_original_psend_init(const void* buf,
                         int dst,
                         int tag,
                         ompi_communicator_t* comm,
-			struct ompi_info_t * info,
+                        struct ompi_info_t * info,
                         ompi_request_t** request)
 {
     int err = OMPI_SUCCESS;
@@ -365,34 +367,33 @@ mca_part_direct_original_psend_init(const void* buf,
     req->tround = 0;
 
 
-    int rank_super;
-    err = MPI_Comm_rank(comm, &rank_super);
+    int rank_super = ompi_comm_rank(comm);
     int rank_count = 2;
     int ranks[rank_count];
     ranks[0] = rank_super;
     ranks[1] = dst;
     mca_part_direct_original_create_partition_communicator(comm, rank_count, ranks, &req->comm);
 
-    err = MPI_Win_create((void*)buf,
+    err = ompi_win_create((void*)buf,
                          0,
                          1,
-                         MPI_INFO_NULL,
                          req->comm,
+                         &(MPI_INFO_NULL->super),
                          &req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window); fflush(stdout);
+    err = req->window->w_osc_module->osc_lock_all(1, req->window);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_create(&req->round,
+    err = ompi_win_create(&req->round,
                          sizeof(int32_t),
                          sizeof(int32_t),
-                         MPI_INFO_NULL,
                          req->comm,
+                         &(MPI_INFO_NULL->super),
                          &req->window_flags);
     assert(MPI_SUCCESS == err);
 
-    err = MPI_Win_lock_all(1, req->window_flags);
+    err = req->window_flags->w_osc_module->osc_lock_all(1, req->window_flags);
     assert(MPI_SUCCESS == err);
 
     /* Initilaize completion variables */
@@ -424,7 +425,7 @@ mca_part_direct_original_start(size_t count, ompi_request_t** requests)
 
     for(i = 0; i < _count && OMPI_SUCCESS == err; i++) {
         mca_part_direct_original_request_t *req = (mca_part_direct_original_request_t *)(requests[i]);
-	    req->tround++;
+        req->tround++;
         if(MCA_PART_DIRECT_ORIGINAL_REQUEST_PSEND == req->req_type) {
             req->done_count = 0;
             for(i = 0; i < req->parts && OMPI_SUCCESS == err; i++) {
@@ -432,9 +433,9 @@ mca_part_direct_original_start(size_t count, ompi_request_t** requests)
             }
         } else {
             req->done_count = 0;
-	        // /* Increment round on sender */
-	        // MPI_Put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
-	        // MPI_Win_flush(0,req->window_flags);
+            // /* Increment round on sender */
+            // err = req->window->w_osc_module->osc_put(&req->round, 1, MPI_INT, 0, 0, 1, MPI_INT, req->window_flags);
+            // req->window_flags->w_osc_module->osc_flush(0, req->window_flags);
         } 
         req->req_ompi.req_state = OMPI_REQUEST_ACTIVE;    
         req->req_ompi.req_status.MPI_TAG = MPI_ANY_TAG;
